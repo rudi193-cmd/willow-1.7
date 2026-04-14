@@ -1,0 +1,19 @@
+# Secrets
+credentials.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+sap/log/
+
+# Local store
+store/
+
+# Environment
+.env
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json

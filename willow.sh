@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # willow.sh — Willow 1.7 MCP server launcher
-# b17: [pending]
+# b17: EK9H5
 # ΔΣ=42
 #
 # Usage:
@@ -17,12 +17,11 @@ SAP_MCP="${WILLOW_ROOT}/sap/sap_mcp.py"
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
 
-# Postgres (defaults match willow Postgres setup)
+# Postgres — Unix socket by default (no host/port = pg_bridge uses socket)
+# Set WILLOW_PG_HOST to force TCP (escape hatch only)
 export WILLOW_PG_DB="${WILLOW_PG_DB:-willow}"
-export WILLOW_PG_USER="${WILLOW_PG_USER:-willow}"
-export WILLOW_PG_HOST="${WILLOW_PG_HOST:-localhost}"
-export WILLOW_PG_PORT="${WILLOW_PG_PORT:-5432}"
-# WILLOW_PG_PASS must be set in environment — no default
+export WILLOW_PG_USER="${WILLOW_PG_USER:-sean}"
+# WILLOW_PG_HOST / WILLOW_PG_PORT / WILLOW_PG_PASS: unset = Unix socket
 
 # Load .env if present
 if [[ -f "${WILLOW_ROOT}/.env" ]]; then
@@ -68,13 +67,13 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
             sig="${manifest}.sig"
             if [[ ! -f "$sig" ]]; then
                 echo "  MISSING SIG: ${app_name}"
-                ((fail++))
+                fail=$(( fail + 1 ))
             elif gpg --verify "$sig" "$manifest" > /dev/null 2>&1; then
                 echo "  OK:          ${app_name}"
-                ((pass++))
+                pass=$(( pass + 1 ))
             else
                 echo "  BAD SIG:     ${app_name}"
-                ((fail++))
+                fail=$(( fail + 1 ))
             fi
         done
         echo ""

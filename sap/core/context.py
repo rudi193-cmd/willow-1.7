@@ -23,6 +23,21 @@ SAFE_ROOT = Path("/home/sean-campbell/SAFE/Applications")
 WILLOW_STORE = Path(__file__).parent.parent.parent  # willow-1.7/
 
 
+def _pg_params() -> dict:
+    """Unix socket by default. TCP only if WILLOW_PG_HOST is set. Mirrors pg_bridge._pg_params()."""
+    import os
+    params = {
+        "dbname": os.environ.get("WILLOW_PG_DB", "willow"),
+        "user": os.environ.get("WILLOW_PG_USER", "sean"),
+    }
+    host = os.environ.get("WILLOW_PG_HOST")
+    if host:
+        params["host"] = host
+        params["port"] = int(os.environ.get("WILLOW_PG_PORT", "5432"))
+        params["password"] = os.environ.get("WILLOW_PG_PASS", "")
+    return params
+
+
 def _resolve_b17_context(b17_ids: list, max_chars: int = 4000) -> str:
     """
     Resolve a list of b17 IDs to KB atom content.
@@ -32,15 +47,8 @@ def _resolve_b17_context(b17_ids: list, max_chars: int = 4000) -> str:
     if not b17_ids:
         return ""
     try:
-        import os
         import psycopg2
-        conn = psycopg2.connect(
-            dbname=os.environ.get("WILLOW_PG_DB", "willow"),
-            user=os.environ.get("WILLOW_PG_USER", "willow"),
-            password=os.environ["WILLOW_PG_PASS"],
-            host=os.environ.get("WILLOW_PG_HOST", "localhost"),
-            port=int(os.environ.get("WILLOW_PG_PORT", "5432")),
-        )
+        conn = psycopg2.connect(**_pg_params())
         conn.autocommit = True
         cur = conn.cursor()
         parts = []
@@ -138,15 +146,8 @@ def _query_willow(query: str, permitted_streams: list[str], max_chars: int, cate
         return []
 
     try:
-        import os
         import psycopg2
-        conn = psycopg2.connect(
-            dbname=os.environ.get("WILLOW_PG_DB", "willow"),
-            user=os.environ.get("WILLOW_PG_USER", "willow"),
-            password=os.environ["WILLOW_PG_PASS"],
-            host=os.environ.get("WILLOW_PG_HOST", "localhost"),
-            port=int(os.environ.get("WILLOW_PG_PORT", "5432")),
-        )
+        conn = psycopg2.connect(**_pg_params())
         conn.autocommit = True
         cur = conn.cursor()
 
