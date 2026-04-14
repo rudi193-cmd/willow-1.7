@@ -68,7 +68,7 @@ except Exception:
 STORE_ROOT = os.environ.get("WILLOW_STORE_ROOT", str(_SAP_ROOT / "store"))
 HANDOFF_DB = os.environ.get(
     "WILLOW_HANDOFF_DB",
-    str(Path.home() / "Documents" / "haumana" / "handoffs.db"),
+    str(Path.home() / "Ashokoa" / "agents" / "hanuman" / "index" / "haumana_handoffs" / "handoffs.db"),
 )
 
 store = WillowStore(STORE_ROOT)

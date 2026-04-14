@@ -7,6 +7,7 @@
 #   ./willow.sh          — start SAP MCP server (stdio, Claude Code connects)
 #   ./willow.sh status   — check Postgres + Ollama
 #   ./willow.sh verify   — verify all SAFE manifests have valid .sig files
+#   ./willow.sh kart     — start Kart task queue daemon (5s poll)
 
 set -euo pipefail
 
@@ -20,7 +21,7 @@ export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json
 # Postgres — Unix socket by default (no host/port = pg_bridge uses socket)
 # Set WILLOW_PG_HOST to force TCP (escape hatch only)
 export WILLOW_PG_DB="${WILLOW_PG_DB:-willow}"
-export WILLOW_PG_USER="${WILLOW_PG_USER:-sean}"
+export WILLOW_PG_USER="${WILLOW_PG_USER:-sean-campbell}"
 # WILLOW_PG_HOST / WILLOW_PG_PORT / WILLOW_PG_PASS: unset = Unix socket
 
 # Load .env if present
@@ -35,7 +36,7 @@ cmd="${1:-start}"
 
 case "$cmd" in
     start|"")
-        exec python3 "${SAP_MCP}"
+        exec /home/sean-campbell/.willow-venv/bin/python3 "${SAP_MCP}"
         ;;
 
     status)
@@ -55,7 +56,7 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
 
     verify)
         echo "Willow 1.7 — manifest signature verification"
-        SAFE_ROOT="${HOME}/SAFE/Applications"
+        SAFE_ROOT="/media/willow/SAFE/Applications"
         if [[ ! -d "$SAFE_ROOT" ]]; then
             echo "  SAFE root not found: $SAFE_ROOT"
             exit 1
@@ -81,8 +82,12 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
         [[ $fail -eq 0 ]]
         ;;
 
+    kart)
+        exec /home/sean-campbell/.willow-venv/bin/python3 "${WILLOW_ROOT}/kart_worker.py" --daemon
+        ;;
+
     *)
-        echo "Usage: willow.sh [start|status|verify]"
+        echo "Usage: willow.sh [start|status|verify|kart]"
         exit 1
         ;;
 esac

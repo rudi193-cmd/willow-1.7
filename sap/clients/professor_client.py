@@ -43,7 +43,7 @@ UTETY_CHAT_ROOT = Path("/home/sean-campbell/github/safe-app-utety-chat")
 PERSONAS_PATH = UTETY_CHAT_ROOT / "personas.py"
 PROFESSOR_DATA_ROOT = UTETY_CHAT_ROOT / "data" / "professors"
 
-DEFAULT_MODEL = "llama3.2:1b"
+DEFAULT_MODEL = "qwen2.5:3b"
 
 # KB categories each professor draws from.
 PROFESSOR_DOMAINS: dict[str, list[str]] = {

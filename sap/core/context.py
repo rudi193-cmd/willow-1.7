@@ -19,7 +19,7 @@ from sap.core.gate import get_manifest, authorized
 
 logger = logging.getLogger("sap.context")
 
-SAFE_ROOT = Path("/home/sean-campbell/SAFE/Applications")
+SAFE_ROOT = Path("/media/willow/SAFE/Applications")
 WILLOW_STORE = Path(__file__).parent.parent.parent  # willow-1.7/
 
 
@@ -28,7 +28,7 @@ def _pg_params() -> dict:
     import os
     params = {
         "dbname": os.environ.get("WILLOW_PG_DB", "willow"),
-        "user": os.environ.get("WILLOW_PG_USER", "sean"),
+        "user": os.environ.get("WILLOW_PG_USER", "sean-campbell"),
     }
     host = os.environ.get("WILLOW_PG_HOST")
     if host:

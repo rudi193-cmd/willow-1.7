@@ -23,7 +23,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-SAFE_ROOT = Path("/home/sean-campbell/SAFE/Applications")
+SAFE_ROOT = Path("/media/willow/SAFE/Applications")
 LOG_DIR = Path(__file__).parent.parent / "log"
 
 logger = logging.getLogger("sap.gate")

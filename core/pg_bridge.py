@@ -23,7 +23,7 @@ def _pg_params() -> dict:
     """Connection params — Unix socket by default (no ports, no network)."""
     params = {
         "dbname": os.environ.get("WILLOW_PG_DB", "willow"),
-        "user": os.environ.get("WILLOW_PG_USER", "sean"),
+        "user": os.environ.get("WILLOW_PG_USER", "sean-campbell"),
     }
     # Only add host/port if explicitly set via env vars (escape hatch)
     host = os.environ.get("WILLOW_PG_HOST")
