@@ -581,6 +581,49 @@ async def list_tools() -> list[types.Tool]:
             description="List all trusted sources Jeles can fetch from. Check this before calling jeles_fetch.",
             inputSchema={"type": "object", "properties": {}},
         ),
+
+        # ── Nest intake ──────────────────────────────────────────────────────
+        types.Tool(
+            name="willow_nest_scan",
+            description=(
+                "Scan the Nest directory for new files, classify each one, and stage them "
+                "in the review queue. Returns all staged items awaiting Sean's ratification. "
+                "Run this when new files have been dropped in the Nest."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="willow_nest_queue",
+            description=(
+                "Return the current Nest review queue — files staged and awaiting ratification. "
+                "Each item includes classification, proposed destination, and matched entities."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        types.Tool(
+            name="willow_nest_file",
+            description=(
+                "Confirm or skip a staged Nest item. On confirm: moves the file to its proposed "
+                "destination and ingests a knowledge atom to LOAM. On skip: marks item dismissed "
+                "without moving. This is the Dual Commit ratification step — Sean calls this."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "integer", "description": "Queue item ID from willow_nest_queue"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["confirm", "skip"],
+                        "description": "'confirm' to file the document, 'skip' to dismiss without moving",
+                    },
+                    "override_dest": {
+                        "type": "string",
+                        "description": "Optional: override the proposed destination path",
+                    },
+                },
+                "required": ["item_id", "action"],
+            },
+        ),
     ]
 
 
@@ -1014,6 +1057,28 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 }
                 for name, src in JELES_TRUSTED_SOURCES.items()
             }
+
+        # ── Nest intake ───────────────────────────────────────────────────────
+        elif name == "willow_nest_scan":
+            from sap.core.nest_intake import scan_nest, get_queue
+            staged = scan_nest()
+            queue = get_queue()
+            result = {"staged": staged, "queue": queue, "pending": len(queue)}
+
+        elif name == "willow_nest_queue":
+            from sap.core.nest_intake import get_queue
+            queue = get_queue()
+            result = {"queue": queue, "pending": len(queue)}
+
+        elif name == "willow_nest_file":
+            from sap.core.nest_intake import confirm_review, skip_item
+            item_id = arguments["item_id"]
+            action = arguments["action"]
+            if action == "confirm":
+                override = arguments.get("override_dest")
+                result = confirm_review(item_id, override_dest=override)
+            else:
+                result = skip_item(item_id)
 
         else:
             result = {"error": f"Unknown tool: {name}"}
