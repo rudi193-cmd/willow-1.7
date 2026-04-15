@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 SAFE_ROOT = Path("/media/willow/SAFE/Applications")
-PROFESSOR_ROOT = SAFE_ROOT / "UTETY" / "professors"
+PROFESSOR_ROOT = SAFE_ROOT / "utety-chat" / "professors"
 LOG_DIR = Path(__file__).parent.parent / "log"
 
 logger = logging.getLogger("sap.gate")
