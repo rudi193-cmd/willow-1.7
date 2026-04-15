@@ -52,10 +52,16 @@ The porch comes down when this ships.
 
 ## Open Work
 
-- Professors need SAFE folder seeds before conf call is live — 16 folders exist, 0 seeded
+- SAFE folder seeds — 16 folders exist, 0 seeded. **Sean's explicit gate required.**
 - `credentials.json` at repo root — scaffolded, Sean fills offline (Groq / Cerebras / SambaNova)
-- Governance commit — `nest_intake.py` + `classifier.py` not yet built
 - UTETY SAFE manifest missing — `SAFE/Applications/UTETY/` not seeded or signed
+
+## Done
+
+- `nest_intake.py` + `classifier.py` — built + committed (`09a96ea`)
+- KART worker — `kart_worker.py` committed (`e95ec03`)
+- All 16 professor context files live — `safe-app-utety-chat` committed (`3c95b00`)
+- Linux auth chain — Unix socket peer auth throughout (`86acb6e`)
 
 ---
 
