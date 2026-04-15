@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 SAFE_ROOT = Path("/media/willow/SAFE/Applications")
+PROFESSOR_ROOT = SAFE_ROOT / "UTETY" / "professors"
 LOG_DIR = Path(__file__).parent.parent / "log"
 
 logger = logging.getLogger("sap.gate")
@@ -100,7 +101,10 @@ def authorized(app_id: str) -> bool:
 
     Logs all denials. Returns True only when all four pass.
     """
+    # Check top-level Applications first, then UTETY/professors/ fallback
     app_path = SAFE_ROOT / app_id
+    if not app_path.exists():
+        app_path = PROFESSOR_ROOT / app_id
 
     if not app_path.exists():
         _log_gap(app_id, f"SAFE folder not found: {app_path}")
