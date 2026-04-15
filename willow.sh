@@ -19,10 +19,10 @@ export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
 
 # Postgres — Unix socket by default (no host/port = pg_bridge uses socket)
-# Explicitly unset TCP vars to prevent parent env from forcing TCP
-unset WILLOW_PG_HOST WILLOW_PG_PORT WILLOW_PG_PASS
+# Unset ALL TCP vars — .mcp.json may inject stale credentials; willow.sh is authoritative
+unset WILLOW_PG_HOST WILLOW_PG_PORT WILLOW_PG_PASS WILLOW_PG_USER
 export WILLOW_PG_DB="${WILLOW_PG_DB:-willow}"
-export WILLOW_PG_USER="${WILLOW_PG_USER:-sean-campbell}"
+export WILLOW_PG_USER="sean-campbell"
 
 # Load .env if present
 if [[ -f "${WILLOW_ROOT}/.env" ]]; then
