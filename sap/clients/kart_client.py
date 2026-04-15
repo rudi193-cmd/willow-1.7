@@ -29,9 +29,9 @@ from sap.core.deliver import to_string
 
 logger = logging.getLogger("sap.clients.kart")
 
-# Default app_id for Ratatosk tasks that don't specify one.
-# SAFE folder: SAFE/Applications/Ratatosk/
-KART_DEFAULT_APP = "Ratatosk"
+# Default app_id for Kart tasks that don't specify one.
+# SAFE folder: SAFE/Applications/utety-chat/professors/Kart/
+KART_DEFAULT_APP = "Kart"
 
 
 def authorize_task(task: dict) -> bool:
