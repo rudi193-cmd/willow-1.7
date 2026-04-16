@@ -17,6 +17,7 @@ Optional dependency. Shell and MCP server work without it (standalone mode).
 
 import os
 import re as _re
+from pathlib import Path as _Path
 from typing import Optional
 
 _SCHEMA_NAME_RE = _re.compile(r'^[a-z][a-z0-9_]*$')
@@ -27,6 +28,19 @@ def _validate_schema_name(name: str) -> str:
     if not _SCHEMA_NAME_RE.match(name):
         raise ValueError(f"Invalid schema name: {name!r} — must match ^[a-z][a-z0-9_]*$")
     return name
+
+
+def _validate_file_path(path: str) -> str:
+    """Resolve path and verify it stays within the home directory."""
+    if not path or not path.strip():
+        raise ValueError("Empty file path")
+    resolved = _Path(path).resolve()
+    home = _Path.home().resolve()
+    if not str(resolved).startswith(str(home)):
+        raise ValueError(
+            f"Path {path!r} resolves outside home directory: {resolved}"
+        )
+    return str(resolved)
 
 
 def _pg_params() -> dict:
@@ -607,9 +621,9 @@ class PgBridge:
             if not row:
                 cur.close()
                 return {"error": "jsonl not found", "id": jsonl_id}
-            source = row[0]
-            import pathlib
-            pathlib.Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
+            source = _validate_file_path(row[0])
+            dest_path = _validate_file_path(dest_path)
+            _Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, dest_path)
             cur.execute(f"""
                 UPDATE {agent}.raw_jsonls
@@ -651,12 +665,14 @@ class PgBridge:
         cur = conn.cursor()
         try:
             if approve and cache_path:
+                cache_path = _validate_file_path(cache_path)
                 cur.execute(f"SELECT filed_path FROM {agent}.raw_jsonls WHERE id = %s", (jsonl_id,))
                 row = cur.fetchone()
                 if row and row[0]:
-                    import shutil, pathlib
-                    pathlib.Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(row[0], cache_path)
+                    import shutil
+                    filed = _validate_file_path(row[0])
+                    _Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(filed, cache_path)
                 cur.execute(f"""
                     UPDATE {agent}.raw_jsonls SET status = %s, filed_path = %s WHERE id = %s
                 """, (new_status, cache_path, jsonl_id))
@@ -677,10 +693,13 @@ class PgBridge:
                 cur.execute(f"SELECT filed_path FROM {agent}.raw_jsonls WHERE id = %s", (jsonl_id,))
                 row = cur.fetchone()
                 if row and row[0]:
-                    import pathlib
-                    p = pathlib.Path(row[0])
-                    if p.exists() and '.tmp' in str(p):
-                        p.unlink()
+                    try:
+                        filed = _validate_file_path(row[0])
+                        p = _Path(filed)
+                        if p.exists() and '.tmp' in str(p):
+                            p.unlink()
+                    except ValueError:
+                        pass  # invalid path in DB — skip deletion
             cur.close()
             return {
                 "status": new_status,
