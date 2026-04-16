@@ -1,0 +1,25 @@
+# willow-1.7 — SAP MCP Server
+# Install: pip install -r requirements.txt
+#
+# System prerequisites (not pip):
+#   - PostgreSQL 14+ with 'willow' database, Unix socket peer auth
+#   - Ollama (https://ollama.ai) running locally on port 11434
+#   - GPG with the signing key loaded (for SAFE manifest verification)
+#   - Python 3.11+
+
+# MCP SDK — Claude Code stdio server protocol
+mcp>=1.0.0
+
+# Postgres bridge (LOAM)
+psycopg2-binary>=2.9.0
+
+# HTTP client — fleet fallback (Groq / Cerebras / SambaNova) + Ollama HTTP
+requests>=2.31.0
+
+# Ollama Python client (optional — falls back to requests HTTP if absent)
+ollama>=0.1.0
+
+# ── One-shot tools (not required for the MCP server) ──────────────────────────
+# patch_gguf_vocab.py: GGUF vocab patcher for Yggdrasil fine-tuned models
+# numpy>=1.24.0
+# gguf>=0.6.0

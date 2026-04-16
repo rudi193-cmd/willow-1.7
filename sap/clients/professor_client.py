@@ -27,6 +27,7 @@ Usage:
 
 import json
 import logging
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -38,8 +39,11 @@ from sap.core.deliver import to_string
 logger = logging.getLogger("sap.clients.professor")
 
 # Canonical paths
-UTETY_APP_ID = "UTETY"
-UTETY_CHAT_ROOT = Path("/home/sean-campbell/github/safe-app-utety-chat")
+UTETY_APP_ID = "utety-chat"  # matches SAFE/Applications/utety-chat/
+UTETY_CHAT_ROOT = Path(os.environ.get(
+    "WILLOW_UTETY_ROOT",
+    str(Path(__file__).parent.parent.parent.parent / "safe-app-utety-chat"),
+))
 PERSONAS_PATH = UTETY_CHAT_ROOT / "personas.py"
 PROFESSOR_DATA_ROOT = UTETY_CHAT_ROOT / "data" / "professors"
 

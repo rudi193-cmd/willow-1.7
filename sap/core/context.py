@@ -12,15 +12,11 @@ The manifest's data_streams list defines what can be pulled.
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional
 
-from sap.core.gate import get_manifest, authorized
+from sap.core.gate import get_manifest, authorized, SAFE_ROOT
 
 logger = logging.getLogger("sap.context")
-
-SAFE_ROOT = Path("/media/willow/SAFE/Applications")
-WILLOW_STORE = Path(__file__).parent.parent.parent  # willow-1.7/
 
 
 def _pg_params() -> dict:

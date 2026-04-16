@@ -14,9 +14,20 @@ set -euo pipefail
 WILLOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SAP_MCP="${WILLOW_ROOT}/sap/sap_mcp.py"
 
+# Python — use WILLOW_PYTHON if set, otherwise find python3 in venv or PATH
+if [[ -z "${WILLOW_PYTHON:-}" ]]; then
+    if [[ -x "${HOME}/.willow-venv/bin/python3" ]]; then
+        WILLOW_PYTHON="${HOME}/.willow-venv/bin/python3"
+    else
+        WILLOW_PYTHON="$(command -v python3)"
+    fi
+fi
+export WILLOW_PYTHON
+
 # ── Environment (override via env or .env file) ───────────────────────────────
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
+export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-/media/willow/SAFE/Applications}"
 
 # ── Agent identity — this project is Heimdallr, not Hanuman ──────────────────
 export WILLOW_AGENT_NAME="heimdallr"
@@ -28,7 +39,7 @@ export WILLOW_NEST_DIR="${HOME}/.willow/Nest/heimdallr"
 # Unset ALL TCP vars — .mcp.json may inject stale credentials; willow.sh is authoritative
 unset WILLOW_PG_HOST WILLOW_PG_PORT WILLOW_PG_PASS WILLOW_PG_USER
 export WILLOW_PG_DB="${WILLOW_PG_DB:-willow}"
-export WILLOW_PG_USER="sean-campbell"
+export WILLOW_PG_USER="${WILLOW_PG_USER:-$(whoami)}"
 
 # Load .env if present
 if [[ -f "${WILLOW_ROOT}/.env" ]]; then
@@ -42,7 +53,7 @@ cmd="${1:-start}"
 
 case "$cmd" in
     start|"")
-        exec /home/sean-campbell/.willow-venv/bin/python3 "${SAP_MCP}"
+        exec "${WILLOW_PYTHON}" "${SAP_MCP}"
         ;;
 
     status)
@@ -105,7 +116,7 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
         ;;
 
     kart)
-        exec /home/sean-campbell/.willow-venv/bin/python3 "${WILLOW_ROOT}/kart_worker.py" --daemon
+        exec "${WILLOW_PYTHON}" "${WILLOW_ROOT}/kart_worker.py" --daemon
         ;;
 
     *)

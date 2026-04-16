@@ -59,7 +59,7 @@ def _connect():
     import os
     params = {
         "dbname": os.environ.get("WILLOW_PG_DB", "willow"),
-        "user":   os.environ.get("WILLOW_PG_USER", "sean"),
+        "user":   os.environ.get("WILLOW_PG_USER", "sean-campbell"),
     }
     host = os.environ.get("WILLOW_PG_HOST")
     if host:

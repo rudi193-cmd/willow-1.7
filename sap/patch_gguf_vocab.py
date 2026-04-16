@@ -1,21 +1,37 @@
 #!/usr/bin/env python3
 """
-Patch yggdrasil-v4 GGUF vocab mismatch: extend tokenizer.ggml.tokens/scores/token_type
-from 32022 → 32256 to match the fine-tuned embedding tensor shape.
+Patch a fine-tuned GGUF vocab mismatch: extend tokenizer.ggml.tokens/scores/token_type
+to match the fine-tuned embedding tensor shape.
 
 Strategy: rebuild the KV header with the patched token list, then binary-copy
 the original tensor block verbatim. This avoids re-serializing quantized weights.
+
+Usage:
+    python3 patch_gguf_vocab.py --src <fine-tuned.gguf> --base <base.gguf> [--dst <out.gguf>] [--vocab <N>]
+
+    --src    Fine-tuned GGUF with wrong vocab size (required)
+    --base   Base model GGUF to borrow tokenizer metadata from (required)
+    --dst    Output path (default: src with .patched.gguf suffix)
+    --vocab  Target vocab size (default: 32256)
 """
+import argparse
 import sys
 import struct
 import numpy as np
 from pathlib import Path
 from gguf import GGUFReader, GGUFWriter, GGUFValueType
 
-SRC = Path("/home/sean-campbell/Downloads/deepseek-coder-1.3b-instruct.Q4_K_M.gguf")
-DST = Path("/home/sean-campbell/Downloads/deepseek-coder-1.3b-instruct.Q4_K_M.patched.gguf")
-BASE = Path("/usr/share/ollama/.ollama/models/blobs/sha256-d040cc18521592f70c199396aeaa44cdc40224079156dc09d4283d745d9dc5fd")
-TARGET_VOCAB = 32256
+_parser = argparse.ArgumentParser(description="Patch GGUF vocab to match embedding tensor shape")
+_parser.add_argument("--src",   required=True, help="Fine-tuned GGUF file")
+_parser.add_argument("--base",  required=True, help="Base model GGUF for tokenizer metadata")
+_parser.add_argument("--dst",   default=None,  help="Output path (default: <src>.patched.gguf)")
+_parser.add_argument("--vocab", type=int, default=32256, help="Target vocab size (default: 32256)")
+_args = _parser.parse_args()
+
+SRC = Path(_args.src)
+DST = Path(_args.dst) if _args.dst else SRC.with_suffix("").with_suffix(".patched.gguf")
+BASE = Path(_args.base)
+TARGET_VOCAB = _args.vocab
 
 # Fields to skip — we replace these with versions from the BASE model or handle them explicitly:
 # - synthetic reader fields (binary header, not KV pairs)

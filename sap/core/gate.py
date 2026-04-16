@@ -23,7 +23,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-SAFE_ROOT = Path("/media/willow/SAFE/Applications")
+SAFE_ROOT = Path(os.environ.get("WILLOW_SAFE_ROOT", "/media/willow/SAFE/Applications"))
 PROFESSOR_ROOT = SAFE_ROOT / "utety-chat" / "professors"
 LOG_DIR = Path(__file__).parent.parent / "log"
 

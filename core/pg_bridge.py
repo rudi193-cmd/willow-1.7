@@ -511,14 +511,16 @@ class PgBridge:
             """)
             cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS {name}.handoffs (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    session_id UUID NOT NULL DEFAULT gen_random_uuid(),
                     title TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    session_date TIMESTAMPTZ,
+                    session_date DATE,
                     working_dir TEXT,
                     turn_count INTEGER,
                     tools_used TEXT[],
+                    b17 TEXT,
+                    pointer_path TEXT,
                     created TIMESTAMPTZ DEFAULT now()
                 )
             """)
