@@ -238,6 +238,20 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
         types.Tool(
+            name="willow_memory_check",
+            description="Score a candidate write before it lands. Returns REDUNDANT/STALE/DARK/CONTRADICTION flags and a recommendation.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title":      {"type": "string", "description": "Proposed atom title"},
+                    "summary":    {"type": "string", "description": "Proposed atom summary"},
+                    "domain":     {"type": "string", "description": "Proposed domain (optional)"},
+                    "collection": {"type": "string", "description": "SOIL collection to check (default: hanuman/atoms)"},
+                },
+                "required": ["title", "summary"],
+            },
+        ),
+        types.Tool(
             name="willow_query",
             description="General search across knowledge graph. Alias for willow_knowledge_search.",
             inputSchema={
@@ -729,6 +743,17 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                     "status": "ingested" if atom_id else "failed",
                     "error": getattr(pg, "_last_ingest_error", None) if not atom_id else None,
                 }
+
+        elif name == "willow_memory_check":
+            from sap.core.memory_gate import check_candidate
+            result = check_candidate(
+                title=arguments["title"],
+                summary=arguments.get("summary", ""),
+                domain=arguments.get("domain"),
+                store=store,
+                pg=pg,
+                collection=arguments.get("collection", "hanuman/atoms"),
+            )
 
         elif name == "willow_agents":
             agents = [
