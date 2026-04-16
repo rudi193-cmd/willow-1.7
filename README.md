@@ -259,14 +259,25 @@ Hooks that work well with willow:
 | Write guard | `PreToolUse → store_put` | Enforces Angular Deviation Rubric on KB writes |
 | Turns logger | `UserPromptSubmit` | Appends each turn to the agent's JSONL store |
 
+See `.claude/hooks-example.md` in this repo for example hook configurations.
+
 **Skills (slash commands):**
 
-| Skill | Purpose |
-|---|---|
-| `/handoff` | Generate session handoff, write to Postgres, copy to Desktop |
-| `/restart-server` | Hot-reload willow modules without restarting Claude Code |
+The session lifecycle skills live in a separate plugin repo:
 
-Skills live in your Claude Code plugin directory (`~/.claude/plugins/`). See `.claude/CLAUDE.md` in this repo for the full identity and operating rules for this project.
+```bash
+git clone https://github.com/rudi193-cmd/willow-skills ~/.claude/plugins/willow-skills
+```
+
+| Skill | Command | Purpose |
+|---|---|---|
+| handoff | `/handoff` | Session handoff document → Postgres + Desktop |
+| shutdown | `/shutdown` | Full shutdown: audit, edge consent, handoff, daily log, git scan |
+| startup | `/startup` | Manual boot when session hooks are degraded |
+| restart-server | `/restart-server` | Hot-reload willow modules without restarting Claude Code |
+| status | `/status` | Read-only: atom count, open gaps, fleet health, unpushed code |
+
+See [willow-skills](https://github.com/rudi193-cmd/willow-skills) for full documentation and install instructions.
 
 ---
 
