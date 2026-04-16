@@ -24,6 +24,8 @@ from typing import Optional
 _SCHEMA_NAME_RE = _re.compile(r'^[a-z][a-z0-9_]*$')
 _logger = _logging.getLogger("pg_bridge")
 
+_MAX_AGENT_SCHEMAS: int = int(os.environ.get("WILLOW_MAX_AGENT_SCHEMAS", "30"))
+
 
 def _validate_schema_name(name: str) -> str:
     """Raise ValueError if name is not a safe Postgres schema identifier."""
@@ -102,20 +104,32 @@ class PgBridge:
 
     # ── Knowledge Search ──────────────────────────────────────────────
 
-    def search_knowledge(self, query: str, limit: int = 20) -> list[dict]:
+    def search_knowledge(self, query: str, limit: int = 20, domain: str = None) -> list[dict]:
         """Full-text search on knowledge_slim view (no content_snippet)."""
         try:
             conn = self._get_conn()
             cur = conn.cursor()
-            cur.execute("""
-                SELECT id, title, summary, source_type, source_id, category,
-                       lattice_domain, lattice_type, lattice_status,
-                       ts_rank(search_vector, plainto_tsquery('english', %s)) AS rank
-                FROM knowledge
-                WHERE search_vector @@ plainto_tsquery('english', %s)
-                ORDER BY rank DESC
-                LIMIT %s
-            """, (query, query, limit))
+            if domain:
+                cur.execute("""
+                    SELECT id, title, summary, source_type, source_id, category,
+                           lattice_domain, lattice_type, lattice_status,
+                           ts_rank(search_vector, plainto_tsquery('english', %s)) AS rank
+                    FROM knowledge
+                    WHERE search_vector @@ plainto_tsquery('english', %s)
+                      AND lattice_domain = %s
+                    ORDER BY rank DESC
+                    LIMIT %s
+                """, (query, query, domain, limit))
+            else:
+                cur.execute("""
+                    SELECT id, title, summary, source_type, source_id, category,
+                           lattice_domain, lattice_type, lattice_status,
+                           ts_rank(search_vector, plainto_tsquery('english', %s)) AS rank
+                    FROM knowledge
+                    WHERE search_vector @@ plainto_tsquery('english', %s)
+                    ORDER BY rank DESC
+                    LIMIT %s
+                """, (query, query, limit))
             columns = [d[0] for d in cur.description]
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
@@ -124,18 +138,27 @@ class PgBridge:
             _logger.warning("search_knowledge failed: %s", e)
             return []
 
-    def search_entities(self, query: str, limit: int = 20) -> list[dict]:
+    def search_entities(self, query: str, limit: int = 20, domain: str = None) -> list[dict]:
         """Search entities table."""
         try:
             conn = self._get_conn()
             cur = conn.cursor()
-            cur.execute("""
-                SELECT id, name, entity_type, first_seen, mention_count
-                FROM entities
-                WHERE name ILIKE %s
-                ORDER BY mention_count DESC
-                LIMIT %s
-            """, (f"%{query}%", limit))
+            if domain:
+                cur.execute("""
+                    SELECT id, name, entity_type, first_seen, mention_count
+                    FROM entities
+                    WHERE name ILIKE %s AND domain = %s
+                    ORDER BY mention_count DESC
+                    LIMIT %s
+                """, (f"%{query}%", domain, limit))
+            else:
+                cur.execute("""
+                    SELECT id, name, entity_type, first_seen, mention_count
+                    FROM entities
+                    WHERE name ILIKE %s
+                    ORDER BY mention_count DESC
+                    LIMIT %s
+                """, (f"%{query}%", limit))
             columns = [d[0] for d in cur.description]
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
@@ -491,6 +514,15 @@ class PgBridge:
         conn = self._get_conn()
         cur = conn.cursor()
         try:
+            cur.execute(
+                "SELECT COUNT(*) FROM information_schema.schemata "
+                "WHERE schema_name NOT IN ('pg_catalog','information_schema','public')"
+            )
+            schema_count = cur.fetchone()[0]
+            if schema_count >= _MAX_AGENT_SCHEMAS:
+                cur.close()
+                _logger.warning("agent_create(%s) rejected: schema limit %d reached", name, _MAX_AGENT_SCHEMAS)
+                return {"error": f"schema limit reached ({_MAX_AGENT_SCHEMAS} max)", "schema": name}
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {name}")
             cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS {name}.raw_jsonls (
