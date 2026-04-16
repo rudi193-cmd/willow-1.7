@@ -53,6 +53,21 @@ try:
 except Exception as _e:
     _SAP_GATE = False
     print(f"SAP gate unavailable: {_e}", file=sys.stderr)
+    # Log to gaps.jsonl so the audit trail reflects gate-down state
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+    from pathlib import Path as _Path
+    _gap_log = _Path(__file__).parent / "log" / "gaps.jsonl"
+    try:
+        _gap_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(_gap_log, "a", encoding="utf-8") as _f:
+            _f.write(_json.dumps({
+                "ts": _dt.now(_tz.utc).isoformat(),
+                "event": "gate_unavailable",
+                "reason": str(_e),
+            }) + "\n")
+    except Exception:
+        pass
 
 # ── WillowStore ───────────────────────────────────────────────────────────────
 from willow_store import WillowStore
@@ -639,9 +654,11 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
     ]
-    _app_id_field = {"type": "string", "description": "SAFE app identifier for authorization"}
     for _tool in _tools:
-        _tool.inputSchema.setdefault("properties", {})["app_id"] = _app_id_field
+        _tool.inputSchema.setdefault("properties", {})["app_id"] = {
+            "type": "string",
+            "description": "SAFE app identifier for authorization",
+        }
         if "required" not in _tool.inputSchema:
             _tool.inputSchema["required"] = []
         if "app_id" not in _tool.inputSchema["required"]:
