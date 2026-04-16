@@ -34,18 +34,29 @@ sys.path.insert(0, str(WILLOW_ROOT))
 from core.pg_bridge import try_connect
 
 
+SHELL_STARTERS = (
+    'cp ', 'rsync ', 'python3 ', 'python ',
+    'mkdir ', 'chmod ', 'find ', 'grep ', 'curl ', 'echo ',
+    'mv ', 'rm ', 'ls ', 'cat ', 'psql ', 'git ', 'bash ',
+    'ollama ',
+)
+
+
+def _validate_shell_cmd(cmd: str) -> bool:
+    """Return True only if cmd starts with a known-safe prefix.
+
+    Prefixes are matched as-is (including trailing space) so that
+    'curl;injection' does not match the 'curl ' prefix.
+    """
+    cmd_lower = cmd.strip().lower()
+    return any(cmd_lower.startswith(s) for s in SHELL_STARTERS)
+
+
 def execute_task(task_text: str) -> dict:
     """Execute a task by running its commands directly. No LLM."""
     import re
     import subprocess
     import tempfile
-
-    SHELL_STARTERS = (
-        'cp ', 'rsync ', 'python3 ', 'python3-c', 'python ',
-        'mkdir ', 'chmod ', 'find ', 'grep ', 'curl ', 'echo ',
-        'mv ', 'rm ', 'ls ', 'cat ', 'psql ', 'git ', 'bash ',
-        'ollama ',
-    )
 
     outputs = []
     step = 0
@@ -108,6 +119,8 @@ def execute_task(task_text: str) -> dict:
         label = cmd.splitlines()[0][:80] if cmd_type == 'script' else cmd
         print(f"[kart] >>> {label}", flush=True)
         try:
+                # Fenced code blocks are trusted — callers are SAP-gate authenticated.
+            # Prefix validation does not apply to multi-line scripts.
             if cmd_type == 'script':
                 with tempfile.NamedTemporaryFile(
                     mode='w', suffix='.sh', prefix='kart_', delete=False
@@ -126,6 +139,10 @@ def execute_task(task_text: str) -> dict:
                 finally:
                     os.unlink(tmp_path)
             else:
+                if not _validate_shell_cmd(cmd):
+                    outputs.append(f"[kart] BLOCKED: command rejected — not in allowed prefix list: {cmd[:80]}")
+                    errors.append(f"blocked_command: {cmd[:80]}")
+                    continue
                 # PYTHONUNBUFFERED forces line-by-line stdout from Python subprocesses
                 env = os.environ.copy()
                 env["PYTHONUNBUFFERED"] = "1"
