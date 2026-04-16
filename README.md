@@ -245,6 +245,63 @@ idempotent — safe to re-run with `IF NOT EXISTS` guards throughout.
 
 ---
 
+## Claude Code Hooks & Skills
+
+willow-1.7 ships a minimal `.claude/settings.json` that enables Bash. For a fully wired session — JSONL registration, MCP-first enforcement, session handoffs — add hooks to your global Claude Code settings (`~/.claude/settings.json`).
+
+Hooks that work well with willow:
+
+| Hook | Event | What it does |
+|---|---|---|
+| JSONL indexer | `SessionStart` | Registers session turn files so `willow_handoff_search` can find them |
+| MCP-first guard | `PreToolUse → Bash` | Blocks `find`, `grep`, `ls`, `psql` in favor of MCP equivalents |
+| KB-first read | `PreToolUse → Read` | Suggests `willow_knowledge_search` before reading a file cold |
+| Write guard | `PreToolUse → store_put` | Enforces Angular Deviation Rubric on KB writes |
+| Turns logger | `UserPromptSubmit` | Appends each turn to the agent's JSONL store |
+
+**Skills (slash commands):**
+
+| Skill | Purpose |
+|---|---|
+| `/handoff` | Generate session handoff, write to Postgres, copy to Desktop |
+| `/restart-server` | Hot-reload willow modules without restarting Claude Code |
+
+Skills live in your Claude Code plugin directory (`~/.claude/plugins/`). See `.claude/CLAUDE.md` in this repo for the full identity and operating rules for this project.
+
+---
+
+## Roadmap
+
+willow-1.7 is the infrastructure layer. What's built on top of it is the longer story.
+
+### Yggdrasil — The Trained Local Model
+
+The fleet fallback today routes to Groq → Cerebras → SambaNova when Ollama is unavailable. That's a dependency on cloud services.
+
+The endgame is Yggdrasil: a small language model trained on operational patterns from this system — session handoffs, ratified atoms, governance logs, professor dispatches. When that model is trained, it replaces the free fleet. The system becomes fully air-gappable.
+
+v4 GGUF files are already on the willow partition. The vocab patcher (`sap/patch_gguf_vocab.py`) was built to normalize tokenizer vocabularies across Yggdrasil model versions. The training corpus is being assembled from 1.6 operational history.
+
+When Yggdrasil ships, willow will be the first personal AI system where every layer — server, storage, inference — runs locally on hardware you own.
+
+### Claude Code Replacement
+
+The MCP server is not Claude-specific. It speaks stdio MCP. Any AI agent that understands the Model Context Protocol can connect to it — Gemini, GPT-4o, local models, anything.
+
+Claude Code is the first client because it is the best tool available right now. But the plan is an open-source Claude Code equivalent — a terminal AI agent that boots from your local repo, connects to willow via stdio, and has no external dependencies beyond what you put in your keyring.
+
+The name isn't settled. The requirement is: open source, MCP-native, no telemetry, no cloud dependency, runs on Linux.
+
+When that client ships, the full stack will be:
+- **Yggdrasil** — inference
+- **willow-1.7** — memory, storage, tools, governance
+- **SAFE** — authorization and consent
+- **open client** — the interface you type into
+
+Local-first, all the way down.
+
+---
+
 ## External Dependencies (not in this repo)
 
 - **`safe-app-utety-chat`** — professor persona definitions (`personas.py`). Set `WILLOW_UTETY_ROOT` to point at your clone. Required for `ProfessorClient`.
