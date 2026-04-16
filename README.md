@@ -198,6 +198,9 @@ All have sensible defaults. Export before running or add to `.env`.
 | `WILLOW_HANDOFF_DB` | `$WILLOW_HANDOFF_DIR/handoffs.db` | SQLite handoffs index |
 | `WILLOW_NEST_DIR` | `~/.willow/Nest/heimdallr` | File intake staging directory |
 | `WILLOW_FILED_DIR` | `~/Ashokoa/Filed` | Filed document destination root |
+| `WILLOW_PARTITION_DIR` | `/media/willow` | System/project content root (Willow partition) |
+| `WILLOW_PERSONAL_DIR` | `~/personal` | Personal content root (photos, knowledge, policy) |
+| `WILLOW_DATA_POLICY_FILE` | `$WILLOW_PERSONAL_DIR/sean_data_policy.md` | Personal data policy used by TOS tripwire check |
 | `WILLOW_MEMORY_DIR` | `~/.claude/projects/…/memory` | Claude Code project memory path |
 | `WILLOW_UTETY_ROOT` | `../safe-app-utety-chat` | Professor personas repository |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
@@ -216,11 +219,37 @@ All have sensible defaults. Export before running or add to `.env`.
 
 ---
 
+## First-Run Setup
+
+On a fresh machine, run these steps in order:
+
+```bash
+# 1. Create the Postgres database and install the schema
+createdb willow
+psql -d willow -f schema.sql
+
+# 2. Copy and fill in API keys
+cp credentials.json.example credentials.json
+# edit credentials.json — add Groq, Cerebras, or other keys
+
+# 3. Scaffold your first SAFE agent (requires gpg key in keyring)
+export WILLOW_SAFE_ROOT=/path/to/your/safe/drive
+./tools/safe-scaffold.sh MyAgent worker "My first agent"
+
+# 4. Start the server
+./willow.sh
+```
+
+`schema.sql` creates all LOAM tables, agent schemas, and KART queue tables. It is
+idempotent — safe to re-run with `IF NOT EXISTS` guards throughout.
+
+---
+
 ## External Dependencies (not in this repo)
 
 - **`safe-app-utety-chat`** — professor persona definitions (`personas.py`). Set `WILLOW_UTETY_ROOT` to point at your clone. Required for `ProfessorClient`.
-- **SAFE drive** — signed manifests live on a physical drive or at `WILLOW_SAFE_ROOT`. Not shipped with this repo.
-- **Postgres `willow` database** — schema created by agent tooling. Run `willow_agent_create` via MCP to scaffold a new agent schema.
+- **SAFE drive** — signed manifests live at `WILLOW_SAFE_ROOT`. Use `./tools/safe-scaffold.sh` to create new agent folders. See the [SAFE repo](https://github.com/rudi193-cmd/SAFE) for the authorization spec.
+- **Postgres `willow` database** — base schema is in `schema.sql`. Run it once on a fresh machine.
 - **Ollama** — local inference. `willow.sh` checks that it's running. Install from [ollama.ai](https://ollama.ai).
 
 ---

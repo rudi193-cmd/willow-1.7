@@ -18,6 +18,7 @@ gate in Willow 1.5 / Ashokoa/sap/core/gate.py (b17: 36N22).
 
 import json
 import logging
+import os
 import subprocess
 from pathlib import Path
 from datetime import datetime, timezone

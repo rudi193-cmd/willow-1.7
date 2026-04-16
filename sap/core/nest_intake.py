@@ -51,6 +51,11 @@ def _willow_partition() -> Path:
     return Path(os.environ.get("WILLOW_PARTITION_DIR", "/media/willow"))
 
 
+def _personal_dir() -> Path:
+    """Root for personal content outside Ashokoa (photos, knowledge, policy)."""
+    return Path(os.environ.get("WILLOW_PERSONAL_DIR", Path.home() / "personal"))
+
+
 # ── DB connection (LOAM / pg_bridge) ──────────────────────────────────────────
 
 def _connect():
@@ -216,14 +221,14 @@ def _proposed_path(filename: str, category: str, matched_entities: list) -> str:
     ext = Path(filename).suffix.lower()
     if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
         if any(k in name_lower for k in _PERSONAL_PHOTO_KEYWORDS):
-            return str(Path("/home/sean-campbell/personal/photos/personal") / filename)
+            return str(_personal_dir() / "photos" / "personal" / filename)
         if _CAMERA_RE.match(filename):
-            return str(Path("/home/sean-campbell/personal/photos/camera") / filename)
+            return str(_personal_dir() / "photos" / "camera" / filename)
         return str(_ashokoa_filed() / "reference" / "screenshots" / filename)
 
     # ── Knowledge (personal, different root) ──────────────────────────────────
     if category in ("knowledge",):
-        return str(Path("/home/sean-campbell/personal/knowledge") / filename)
+        return str(_personal_dir() / "knowledge" / filename)
 
     # ── Standard personal routing ──────────────────────────────────────────────
     subfolder = _PERSONAL_ROUTES.get(category, "reference/general")
@@ -291,7 +296,12 @@ def _match_entities(filename: str, ocr_text: str) -> list:
 
 # ── TOS policy check ───────────────────────────────────────────────────────────
 
-_POLICY_FILE = Path("/home/sean-campbell/personal/sean_data_policy.md")
+def _data_policy_file() -> Path:
+    """Sean's personal data policy — used for TOS tripwire context."""
+    return Path(os.environ.get(
+        "WILLOW_DATA_POLICY_FILE",
+        _personal_dir() / "sean_data_policy.md"
+    ))
 
 _TOS_TRIPWIRES = [
     ("sells_personal_data",   "BLOCK", [{"sell", "data"}, {"sell", "personal"}, {"share", "third party", "sell"}]),
@@ -309,7 +319,7 @@ _LEGAL_CATEGORIES = {"legal_agreement", "terms_of_service", "contract", "legal",
 def _check_tos_policy(text: str) -> dict:
     if not text:
         return {"verdict": "FLAG", "triggered": [{"rule": "no_text_extracted", "verdict": "FLAG"}],
-                "policy_file": str(_POLICY_FILE)}
+                "policy_file": str(_data_policy_file())}
     lower = text.lower()
     triggered = []
     for label, verdict, phrase_sets in _TOS_TRIPWIRES:
@@ -323,7 +333,7 @@ def _check_tos_policy(text: str) -> dict:
         overall = "FLAG"
     else:
         overall = "PASS"
-    return {"verdict": overall, "triggered": triggered, "policy_file": str(_POLICY_FILE)}
+    return {"verdict": overall, "triggered": triggered, "policy_file": str(_data_policy_file())}
 
 
 # ── Stage a file ───────────────────────────────────────────────────────────────

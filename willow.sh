@@ -28,6 +28,7 @@ export WILLOW_PYTHON
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
 export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-/media/willow/SAFE/Applications}"
+export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 
 # ── Agent identity — this project is Heimdallr, not Hanuman ──────────────────
 export WILLOW_AGENT_NAME="heimdallr"
