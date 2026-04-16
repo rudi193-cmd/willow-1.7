@@ -326,8 +326,7 @@ class PgBridge:
     def submit_task(self, task: str, submitted_by: str = "ganesha",
                     agent: str = "kart") -> Optional[str]:
         """Submit a task to the queue. Returns task_id."""
-        import hashlib, time
-        task_id = hashlib.sha256(f"{task}{time.time()}".encode()).hexdigest()[:12]
+        task_id = self.gen_id(8)
         try:
             conn = self._get_conn()
             cur = conn.cursor()
