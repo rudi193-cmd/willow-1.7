@@ -39,9 +39,7 @@ _APP_ID_RE = _re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_\-]*$')
 
 def _validate_app_id(app_id: str) -> str:
     """Reject app_id values that could escape SAFE_ROOT via path traversal."""
-    if not app_id or '\x00' in app_id or '/' in app_id or '..' in app_id:
-        raise ValueError(f"Invalid app_id: {app_id!r}")
-    if not _APP_ID_RE.match(app_id):
+    if not _APP_ID_RE.match(app_id or ""):
         raise ValueError(f"Invalid app_id: {app_id!r} — must match ^[a-zA-Z0-9][a-zA-Z0-9_\\-]*$")
     return app_id
 
@@ -206,7 +204,11 @@ def get_manifest(app_id: str) -> Optional[dict]:
     if not authorized(app_id):
         return None
 
+    # Mirror the same path resolution as authorized()
     manifest_path = SAFE_ROOT / app_id / "safe-app-manifest.json"
+    if not manifest_path.exists():
+        manifest_path = PROFESSOR_ROOT / app_id / "safe-app-manifest.json"
+
     try:
         raw = manifest_path.read_text(encoding="utf-8")
         return json.loads(raw)

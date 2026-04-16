@@ -54,3 +54,12 @@ class TestValidateAppId:
         mock_gap.assert_called_once()
         call_args = mock_gap.call_args
         assert "Invalid app_id" in call_args[0][1]
+
+    def test_get_manifest_rejects_hostile_app_id(self):
+        """get_manifest() with hostile app_id returns None without calling authorized()."""
+        from unittest.mock import patch
+        from sap.core.gate import get_manifest
+        with patch("sap.core.gate.authorized") as mock_auth:
+            result = get_manifest("../../../etc/passwd")
+        assert result is None
+        mock_auth.assert_not_called()
