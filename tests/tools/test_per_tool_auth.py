@@ -53,6 +53,18 @@ async def test_valid_app_id_passes_through():
 
 
 @pytest.mark.anyio
+async def test_infra_id_bypasses_gate():
+    """ENGINEER/OPERATOR app_ids bypass PGP gate — gate is never called."""
+    with patch("sap.sap_mcp.sap_authorized") as mock_auth, \
+         patch("sap.sap_mcp._SAP_GATE", True):
+        mock_auth.return_value = False  # gate would deny if called
+        result = await _call("store_stats", {"app_id": "heimdallr"})
+    mock_auth.assert_not_called()
+    payload = json.loads(result[0].text)
+    assert payload.get("error") != "unauthorized"
+
+
+@pytest.mark.anyio
 async def test_gate_disabled_passes_through():
     """When _SAP_GATE is False (import failed), tools work without app_id."""
     with patch("sap.sap_mcp._SAP_GATE", False):

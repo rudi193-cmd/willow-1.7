@@ -69,6 +69,12 @@ except Exception as _e:
     except Exception:
         pass
 
+# ── Trust tier bypass — ENGINEER + OPERATOR agents skip PGP gate ─────────────
+_INFRA_IDS = frozenset({
+    "heimdallr", "hanuman", "opus", "kart", "shiva", "ganesha",  # ENGINEER
+    "willow", "ada", "steve",                                      # OPERATOR
+})
+
 # ── WillowStore ───────────────────────────────────────────────────────────────
 from willow_store import WillowStore
 
@@ -672,7 +678,7 @@ async def list_tools() -> list[types.Tool]:
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
         app_id = arguments.get("app_id", "")
-        if _SAP_GATE and not sap_authorized(app_id):
+        if _SAP_GATE and app_id not in _INFRA_IDS and not sap_authorized(app_id):
             return [types.TextContent(type="text", text=json.dumps({
                 "error": "unauthorized",
                 "app_id": app_id,
