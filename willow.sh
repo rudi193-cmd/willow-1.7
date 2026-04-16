@@ -68,21 +68,37 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
             exit 1
         fi
         pass=0; fail=0
-        for manifest in "${SAFE_ROOT}"/*/safe-app-manifest.json; do
-            app_dir="$(dirname "$manifest")"
-            app_name="$(basename "$app_dir")"
-            sig="${manifest}.sig"
+
+        _verify_one() {
+            local manifest="$1"
+            local label="$2"
+            local sig="${manifest}.sig"
             if [[ ! -f "$sig" ]]; then
-                echo "  MISSING SIG: ${app_name}"
+                echo "  MISSING SIG: ${label}"
                 fail=$(( fail + 1 ))
             elif gpg --verify "$sig" "$manifest" > /dev/null 2>&1; then
-                echo "  OK:          ${app_name}"
+                echo "  OK:          ${label}"
                 pass=$(( pass + 1 ))
             else
-                echo "  BAD SIG:     ${app_name}"
+                echo "  BAD SIG:     ${label}"
                 fail=$(( fail + 1 ))
             fi
+        }
+
+        # Top-level apps
+        for manifest in "${SAFE_ROOT}"/*/safe-app-manifest.json; do
+            [[ -f "$manifest" ]] || continue
+            _verify_one "$manifest" "$(basename "$(dirname "$manifest")")"
         done
+
+        # Professors (utety-chat/professors/*)
+        for manifest in "${SAFE_ROOT}"/*/professors/*/safe-app-manifest.json; do
+            [[ -f "$manifest" ]] || continue
+            app="$(basename "$(dirname "$(dirname "$(dirname "$manifest")")")")"
+            prof="$(basename "$(dirname "$manifest")")"
+            _verify_one "$manifest" "${app}/professors/${prof}"
+        done
+
         echo ""
         echo "  Passed: ${pass}  Failed: ${fail}"
         [[ $fail -eq 0 ]]

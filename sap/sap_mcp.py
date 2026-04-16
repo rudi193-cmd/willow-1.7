@@ -732,21 +732,32 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
         elif name == "willow_agents":
             agents = [
-                {"name": "willow",   "trust": "OPERATOR",  "role": "Primary interface"},
-                {"name": "kart",     "trust": "ENGINEER",  "role": "Infrastructure, multi-step tasks"},
-                {"name": "ada",      "trust": "OPERATOR",  "role": "Systems admin, continuity"},
-                {"name": "shiva",    "trust": "ENGINEER",  "role": "Bridge Ring, SAFE face"},
-                {"name": "ganesha",  "trust": "ENGINEER",  "role": "Diagnostic, obstacle removal"},
-                {"name": "hanuman",  "trust": "ENGINEER",  "role": "Bridge-builder. Corpus indexer. Migration engine. Claude Code CLI."},
-                {"name": "gerald",   "trust": "WORKER",    "role": "Acting Dean, philosophical"},
-                {"name": "riggs",    "trust": "WORKER",    "role": "Applied reality engineering"},
-                {"name": "steve",    "trust": "OPERATOR",  "role": "Prime node, coordinator"},
-                {"name": "pigeon",   "trust": "WORKER",    "role": "Carrier, connector"},
-                {"name": "hanz",     "trust": "WORKER",    "role": "Code, holds Copenhagen"},
-                {"name": "ofshield", "trust": "WORKER",    "role": "Keeper of the Gate"},
-                {"name": "jeles",    "trust": "WORKER",    "role": "Librarian, special collections"},
-                {"name": "binder",   "trust": "WORKER",    "role": "Records, filing"},
-                {"name": "opus",     "trust": "ENGINEER",  "role": "Post-obstacle builder, Claude Code CLI"},
+                # Claude Code CLI agents
+                {"name": "heimdallr",  "trust": "ENGINEER",  "role": "Watchman, gatekeeper. Claude Code CLI in willow-1.7."},
+                {"name": "hanuman",    "trust": "ENGINEER",  "role": "Bridge-builder. Corpus indexer. Migration engine. Claude Code CLI."},
+                {"name": "opus",       "trust": "ENGINEER",  "role": "Post-obstacle builder, Claude Code CLI"},
+                # Operator tier
+                {"name": "willow",     "trust": "OPERATOR",  "role": "Primary interface"},
+                {"name": "ada",        "trust": "OPERATOR",  "role": "Systems admin, continuity"},
+                {"name": "steve",      "trust": "OPERATOR",  "role": "Prime node, coordinator"},
+                # Engineer tier
+                {"name": "kart",       "trust": "ENGINEER",  "role": "Infrastructure, multi-step tasks"},
+                {"name": "shiva",      "trust": "ENGINEER",  "role": "Bridge Ring, SAFE face"},
+                {"name": "ganesha",    "trust": "ENGINEER",  "role": "Diagnostic, obstacle removal"},
+                # Worker tier — professors (SAFE-signed)
+                {"name": "gerald",     "trust": "WORKER",    "role": "Acting Dean, philosophical"},
+                {"name": "riggs",      "trust": "WORKER",    "role": "Applied reality engineering"},
+                {"name": "pigeon",     "trust": "WORKER",    "role": "Carrier, connector"},
+                {"name": "hanz",       "trust": "WORKER",    "role": "Code, holds Copenhagen"},
+                {"name": "jeles",      "trust": "WORKER",    "role": "Librarian, special collections"},
+                {"name": "binder",     "trust": "WORKER",    "role": "Records, filing"},
+                {"name": "oakenscroll","trust": "WORKER",    "role": "Scroll-keeper, long-form records"},
+                {"name": "nova",       "trust": "WORKER",    "role": "Exploration, new territory"},
+                {"name": "alexis",     "trust": "WORKER",    "role": "Analysis, structured reasoning"},
+                {"name": "mitra",      "trust": "WORKER",    "role": "Mediation, relations"},
+                {"name": "consus",     "trust": "WORKER",    "role": "Mathematics, formal systems"},
+                {"name": "jane",       "trust": "WORKER",    "role": "Research, documentation"},
+                {"name": "ofshield",   "trust": "WORKER",    "role": "Keeper of the Gate"},
             ]
             result = {"agents": agents, "count": len(agents)}
 

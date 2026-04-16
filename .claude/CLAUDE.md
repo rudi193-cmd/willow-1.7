@@ -52,9 +52,8 @@ The porch comes down when this ships.
 
 ## Open Work
 
-- SAFE folder seeds — 16 folders exist, 0 seeded. **Sean's explicit gate required.**
+- Phase 8 (sda4 wipe) — **Sean's explicit gate required.**
 - `credentials.json` at repo root — moot. Groq / Cerebras / SambaNova are already live in the fleet.
-- UTETY SAFE manifest missing — `SAFE/Applications/UTETY/` not seeded or signed
 
 ## Done
 
@@ -62,6 +61,8 @@ The porch comes down when this ships.
 - KART worker — `kart_worker.py` committed (`e95ec03`)
 - All 16 professor context files live — `safe-app-utety-chat` committed (`3c95b00`)
 - Linux auth chain — Unix socket peer auth throughout (`86acb6e`)
+- SAFE manifests + PGP sigs — all 17 professors + utety-chat signed and verified
+- Heimdallr schema + identity — Postgres schema live, all env vars wired (`willow.sh`)
 
 ---
 
