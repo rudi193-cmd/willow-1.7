@@ -34,6 +34,7 @@ export WILLOW_AGENT_NAME="heimdallr"
 export WILLOW_HANDOFF_DIR="${HOME}/Ashokoa/agents/heimdallr/index/haumana_handoffs"
 export WILLOW_HANDOFF_DB="${WILLOW_HANDOFF_DIR}/handoffs.db"
 export WILLOW_NEST_DIR="${HOME}/.willow/Nest/heimdallr"
+export WILLOW_MEMORY_DIR="${HOME}/.claude/projects/-home-sean-campbell-github-willow-1-7/memory"
 
 # Postgres — Unix socket by default (no host/port = pg_bridge uses socket)
 # Unset ALL TCP vars — .mcp.json may inject stale credentials; willow.sh is authoritative
