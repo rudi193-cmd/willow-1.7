@@ -77,7 +77,7 @@ class TestOverlapScore:
 
 class TestCheckContradiction:
     def test_blocked_and_unblocked(self):
-        hits = check_contradiction("SA002 progress", "cube_cells_indexer unblocked by schema fix")
+        hits = check_contradiction("cube_cells_indexer was blocked", "now unblocked by schema fix")
         assert any("blocked" in h for h in hits)
 
     def test_no_contradiction(self):
