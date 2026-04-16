@@ -19,6 +19,7 @@ gate in Willow 1.5 / Ashokoa/sap/core/gate.py (b17: 36N22).
 import json
 import logging
 import os
+import re as _re
 import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
@@ -32,6 +33,18 @@ _EXPECTED_FP = os.environ.get(
     "WILLOW_PGP_FINGERPRINT",
     "96B92D78875F60BE229A0A348F414B8C1B402BB0",
 ).upper().replace(" ", "")
+
+_APP_ID_RE = _re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_\-]*$')
+
+
+def _validate_app_id(app_id: str) -> str:
+    """Reject app_id values that could escape SAFE_ROOT via path traversal."""
+    if not app_id or '\x00' in app_id or '/' in app_id or '..' in app_id:
+        raise ValueError(f"Invalid app_id: {app_id!r}")
+    if not _APP_ID_RE.match(app_id):
+        raise ValueError(f"Invalid app_id: {app_id!r} — must match ^[a-zA-Z0-9][a-zA-Z0-9_\\-]*$")
+    return app_id
+
 
 logger = logging.getLogger("sap.gate")
 
@@ -127,6 +140,12 @@ def authorized(app_id: str) -> bool:
 
     Logs all denials. Returns True only when all four pass.
     """
+    try:
+        app_id = _validate_app_id(app_id)
+    except ValueError as e:
+        _log_gap(app_id, f"Invalid app_id rejected: {e}")
+        return False
+
     # Check top-level Applications first, then UTETY/professors/ fallback
     app_path = SAFE_ROOT / app_id
     if not app_path.exists():
