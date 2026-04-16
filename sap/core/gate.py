@@ -36,6 +36,13 @@ _EXPECTED_FP = os.environ.get(
 
 _APP_ID_RE = _re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_\-]*$')
 
+# If set, only these app_ids are accepted (comma-separated). INFRA IDs are always exempt.
+_ALLOWED_IDS_RAW = os.environ.get("WILLOW_ALLOWED_APP_IDS", "")
+_ALLOWED_APP_IDS: frozenset[str] = (
+    frozenset(x.strip() for x in _ALLOWED_IDS_RAW.split(",") if x.strip())
+    if _ALLOWED_IDS_RAW.strip() else frozenset()
+)
+
 
 def _validate_app_id(app_id: str) -> str:
     """Reject app_id values that could escape SAFE_ROOT via path traversal."""
@@ -142,6 +149,10 @@ def authorized(app_id: str) -> bool:
         app_id = _validate_app_id(app_id)
     except ValueError as e:
         _log_gap(app_id, f"Invalid app_id rejected: {e}")
+        return False
+
+    if _ALLOWED_APP_IDS and app_id not in _ALLOWED_APP_IDS:
+        _log_gap(app_id, f"app_id not in allowlist (WILLOW_ALLOWED_APP_IDS)")
         return False
 
     # Check top-level Applications first, then UTETY/professors/ fallback
