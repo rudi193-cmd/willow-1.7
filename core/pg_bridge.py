@@ -256,7 +256,8 @@ class PgBridge:
             """, (domain, principle, source))
             cur.close()
             return True
-        except Exception:
+        except Exception as e:
+            _logger.warning("opus_feedback_write failed: %s", e)
             return False
 
     def opus_journal_write(self, entry: str, session_id: str = None) -> Optional[int]:
@@ -272,7 +273,8 @@ class PgBridge:
             row = cur.fetchone()
             cur.close()
             return row[0] if row else None
-        except Exception:
+        except Exception as e:
+            _logger.warning("opus_journal_write failed: %s", e)
             return None
 
     # ── Edges ─────────────────────────────────────────────────────────
@@ -341,7 +343,8 @@ class PgBridge:
             row = cur.fetchone()
             cur.close()
             return row[0] if row else None
-        except Exception:
+        except Exception as e:
+            _logger.warning("opus_journal_write failed: %s", e)
             return None
 
     # ── Task Queue ──────────────────────────────────────────────────────
@@ -361,7 +364,8 @@ class PgBridge:
             row = cur.fetchone()
             cur.close()
             return row[0] if row else None
-        except Exception:
+        except Exception as e:
+            _logger.warning("submit_task failed: %s", e)
             return None
 
     def task_status(self, task_id: str) -> Optional[dict]:
@@ -408,7 +412,8 @@ class PgBridge:
             columns = [d[0] for d in cur.description]
             cur.close()
             return dict(zip(columns, row))
-        except Exception:
+        except Exception as e:
+            _logger.warning("claim_task failed: %s", e)
             return None
 
     def complete_task(self, task_id: str, result: dict, steps: int = 0) -> bool:
@@ -424,7 +429,8 @@ class PgBridge:
             """, (_json.dumps(result), steps, task_id))
             cur.close()
             return True
-        except Exception:
+        except Exception as e:
+            _logger.warning("complete_task failed: %s", e)
             return False
 
     def fail_task(self, task_id: str, error: str) -> bool:
@@ -440,7 +446,8 @@ class PgBridge:
             """, (_json.dumps({"error": error}), task_id))
             cur.close()
             return True
-        except Exception:
+        except Exception as e:
+            _logger.warning("fail_task failed: %s", e)
             return False
 
     def pending_tasks(self, agent: str = "kart", limit: int = 10) -> list[dict]:
@@ -459,7 +466,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("pending_tasks failed: %s", e)
             return []
 
     # ── Stats ─────────────────────────────────────────────────────────
@@ -523,6 +531,7 @@ class PgBridge:
                 cur.close()
                 _logger.warning("agent_create(%s) rejected: schema limit %d reached", name, _MAX_AGENT_SCHEMAS)
                 return {"error": f"schema limit reached ({_MAX_AGENT_SCHEMAS} max)", "schema": name}
+            conn.autocommit = False
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {name}")
             cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS {name}.raw_jsonls (
@@ -595,14 +604,18 @@ class PgBridge:
                 import pathlib
                 for sub in ("raw", ".tmp", "cache"):
                     pathlib.Path(folder_root, sub).mkdir(parents=True, exist_ok=True)
+            conn.commit()
             cur.close()
             return {"status": "created", "schema": name, "tables": [
                 "raw_jsonls", "atoms", "edges", "feedback", "handoffs"
             ]}
         except Exception as e:
+            conn.rollback()
             cur.close()
             _logger.error("agent_create(%s) failed: %s", name, e)
             return {"status": "error", "error": "database error — check logs"}
+        finally:
+            conn.autocommit = True
 
     # ── Jeles: register + extract from JSONL ─────────────────────
 
