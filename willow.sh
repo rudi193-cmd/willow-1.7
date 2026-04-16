@@ -18,6 +18,12 @@ SAP_MCP="${WILLOW_ROOT}/sap/sap_mcp.py"
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
 
+# ── Agent identity — this project is Heimdallr, not Hanuman ──────────────────
+export WILLOW_AGENT_NAME="heimdallr"
+export WILLOW_HANDOFF_DIR="${HOME}/Ashokoa/agents/heimdallr/index/haumana_handoffs"
+export WILLOW_HANDOFF_DB="${WILLOW_HANDOFF_DIR}/handoffs.db"
+export WILLOW_NEST_DIR="${HOME}/.willow/Nest/heimdallr"
+
 # Postgres — Unix socket by default (no host/port = pg_bridge uses socket)
 # Unset ALL TCP vars — .mcp.json may inject stale credentials; willow.sh is authoritative
 unset WILLOW_PG_HOST WILLOW_PG_PORT WILLOW_PG_PASS WILLOW_PG_USER
