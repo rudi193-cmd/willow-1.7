@@ -56,6 +56,31 @@ def _personal_dir() -> Path:
     return Path(os.environ.get("WILLOW_PERSONAL_DIR", Path.home() / "personal"))
 
 
+# ── Destination path validation ───────────────────────────────────────────────
+
+def _allowed_dest_roots() -> list:
+    """Return the list of allowed destination root directories."""
+    return [
+        _ashokoa_filed(),
+        _willow_partition(),
+        _personal_dir(),
+    ]
+
+
+def _validate_dest_path(path: str) -> str:
+    """Resolve destination path and verify it's within an allowed root."""
+    if not path or not path.strip():
+        raise ValueError("Empty destination path")
+    resolved = Path(path).resolve()
+    for root in _allowed_dest_roots():
+        try:
+            resolved.relative_to(root.resolve())
+            return str(resolved)
+        except ValueError:
+            continue
+    raise ValueError(f"Destination {path!r} is outside all allowed roots")
+
+
 # ── DB connection (LOAM / pg_bridge) ──────────────────────────────────────────
 
 def _connect():
@@ -394,10 +419,10 @@ def stage_file(file_path: str, file_hash: str = None) -> dict:
     # Hash
     if not file_hash:
         try:
-            h = hashlib.md5()
+            h = hashlib.sha256()
             with open(path, "rb") as f:
-                h.update(f.read(65536))
-            h.update(str(path.stat().st_size).encode())
+                while chunk := f.read(65536):
+                    h.update(chunk)
             file_hash = h.hexdigest()
         except Exception:
             file_hash = None
@@ -510,26 +535,41 @@ def confirm_review(
 
     # ── File disposition ───────────────────────────────────────────────────────
     if src_path.exists():
-        if dispose_file:
+        if src_path.is_symlink():
+            errors.append(f"symlink not allowed as source: {src_path.name}")
+            logger.warning("NEST: rejecting symlink: %s", src_path)
+        elif dispose_file:
             try:
-                src_path.unlink()
-                logger.info(f"NEST: deleted {src_path.name}")
-            except Exception as e:
-                errors.append(f"delete failed: {e}")
+                resolved_src = Path(src_path).resolve()
+                nest_resolved = _nest_dir().resolve()
+                resolved_src.relative_to(nest_resolved)
+            except ValueError:
+                errors.append(f"dispose_file rejected: {src_path} is outside Nest directory")
+            else:
+                try:
+                    src_path.unlink()
+                    logger.info(f"NEST: deleted {src_path.name}")
+                except Exception as e:
+                    errors.append(f"delete failed: {e}")
         elif move_file:
-            dest = Path(final_path)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if dest.exists():
-                stem, suffix, i = dest.stem, dest.suffix, 1
-                while dest.exists():
-                    dest = dest.parent / f"{stem}_{i}{suffix}"
-                    i += 1
             try:
-                shutil.move(str(src_path), str(dest))
-                filed_to = str(dest)
-                logger.info(f"NEST: filed {src_path.name} → {dest}")
-            except Exception as e:
-                errors.append(f"move failed: {e}")
+                final_path = _validate_dest_path(final_path)
+            except ValueError as e:
+                errors.append(f"invalid destination path: {e}")
+            else:
+                dest = Path(final_path)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if dest.exists():
+                    stem, suffix, i = dest.stem, dest.suffix, 1
+                    while dest.exists():
+                        dest = dest.parent / f"{stem}_{i}{suffix}"
+                        i += 1
+                try:
+                    shutil.move(str(src_path), str(dest))
+                    filed_to = str(dest)
+                    logger.info(f"NEST: filed {src_path.name} → {dest}")
+                except Exception as e:
+                    errors.append(f"move failed: {e}")
     else:
         logger.warning(f"NEST: source file missing: {src_path}")
 
@@ -646,16 +686,16 @@ def scan_nest() -> list:
     staged = []
     with _SCAN_LOCK:
         for item in sorted(nest.iterdir()):
-            if not item.is_file() or item.name.startswith("."):
+            if not item.is_file() or item.name.startswith(".") or item.is_symlink():
                 continue
             if item.name in already_names:
                 continue
             # Hash check
             try:
-                h = hashlib.md5()
+                h = hashlib.sha256()
                 with open(item, "rb") as f:
-                    h.update(f.read(65536))
-                h.update(str(item.stat().st_size).encode())
+                    while chunk := f.read(65536):
+                        h.update(chunk)
                 fhash = h.hexdigest()
             except Exception:
                 fhash = None
