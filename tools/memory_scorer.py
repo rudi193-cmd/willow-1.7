@@ -1,6 +1,6 @@
 """
 tools/memory_scorer.py — Willow memory quality signals
-b17: PENDING
+b17: MSCR1
 ΔΣ=42
 
 Four signals run against any knowledge record:
@@ -13,6 +13,7 @@ Shared by memory_auditor.py, memory_health.py, and sap/core/memory_gate.py.
 No CLI. No side effects. Pure functions where possible.
 """
 
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -102,13 +103,18 @@ def overlap_score(title_a: str, title_b: str) -> float:
 # ── Contradiction ─────────────────────────────────────────────────────
 
 def check_contradiction(title: str, summary: str) -> list[str]:
-    """Return list of contradiction hits (e.g. 'blocked vs unblocked')."""
+    """Return list of contradiction hits (e.g. 'blocked vs unblocked').
+
+    Uses word-boundary matching and strips the negative phrase before checking
+    for the positive, so 'not deployed' alone does not trigger a false hit.
+    """
     text = f"{title} {summary}".lower()
-    return [
-        f"'{pos}' vs '{neg}'"
-        for pos, neg in CONTRADICTION_PAIRS
-        if pos in text and neg in text
-    ]
+    hits = []
+    for pos, neg in CONTRADICTION_PAIRS:
+        stripped = re.sub(re.escape(neg), "", text)
+        if re.search(r"\b" + re.escape(pos) + r"\b", stripped) and neg in text:
+            hits.append(f"'{pos}' vs '{neg}'")
+    return hits
 
 
 # ── DARK signal ───────────────────────────────────────────────────────

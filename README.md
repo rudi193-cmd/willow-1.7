@@ -23,6 +23,7 @@ The server exposes 44 tools organized into six functional groups:
 | **Task queue** | `willow_task_submit`, `willow_task_status`, `willow_task_list` | Submit shell tasks to Kart; poll results |
 | **Pipeline** | `willow_agent_create`, `willow_jeles_register`, `willow_jeles_extract`, `willow_binder_file`, `willow_binder_edge`, `willow_ratify`, `willow_base17`, `willow_handoff_latest`, `willow_handoff_search`, `willow_handoff_rebuild` | Agent schema creation, JSONL lifecycle, ratification |
 | **Nest intake** | `willow_nest_scan`, `willow_nest_queue`, `willow_nest_file` | Drop files into a staging directory; classify and route them with human approval |
+| **Memory health** | `willow_memory_check` | Pre-write quality gate: scores a record against four signals (REDUNDANT, STALE, DARK, CONTRADICTION) before it enters SOIL |
 | **Opus** | `opus_search`, `opus_ingest`, `opus_feedback`, `opus_feedback_write`, `opus_journal` | Agent-scoped atom and feedback store |
 | **Jeles** | `jeles_fetch`, `jeles_sources` | Curated reads from a registry of trusted external APIs |
 | **Server control** | `willow_reload`, `willow_restart_server` | Hot-reload modules without restarting Claude Code |
@@ -345,7 +346,8 @@ willow-1.7/
 │   │   ├── context.py           # Context assembler
 │   │   ├── deliver.py           # Context formatter
 │   │   ├── nest_intake.py       # File intake and staging
-│   │   └── classifier.py        # File content classifier
+│   │   ├── classifier.py        # File content classifier
+│   │   └── memory_gate.py       # Memory health gate (willow_memory_check MCP tool)
 │   │
 │   ├── clients/                 # Application-side SAP clients
 │   │   ├── professor_client.py  # UTETY professor interface
@@ -354,6 +356,13 @@ willow-1.7/
 │   │
 │   └── log/                     # Runtime access logs (gitignored)
 │       └── gaps.jsonl           # Denied access attempts
+│
+├── tools/                       # Admin and diagnostic scripts
+│   ├── safe-scaffold.sh         # Scaffold a new SAFE agent folder with signed manifest
+│   ├── memory_scorer.py         # Four-signal scorer: REDUNDANT, STALE, DARK, CONTRADICTION
+│   ├── memory_health.py         # Batch health report across a SOIL collection
+│   ├── memory_auditor.py        # Pre-write CLI scorer (exits 1 on bad env or bad score)
+│   └── sync_soil_to_loam.py     # Idempotent SOIL→LOAM bridge (fixes DARK records)
 │
 └── apps/                        # SAP application stubs (local, gitignored content)
 ```
