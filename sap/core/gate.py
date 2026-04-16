@@ -28,6 +28,11 @@ SAFE_ROOT = Path(os.environ.get("WILLOW_SAFE_ROOT", "/media/willow/SAFE/Applicat
 PROFESSOR_ROOT = SAFE_ROOT / "utety-chat" / "professors"
 LOG_DIR = Path(__file__).parent.parent / "log"
 
+_EXPECTED_FP = os.environ.get(
+    "WILLOW_PGP_FINGERPRINT",
+    "96B92D78875F60BE229A0A348F414B8C1B402BB0",
+).upper().replace(" ", "")
+
 logger = logging.getLogger("sap.gate")
 
 
@@ -61,10 +66,11 @@ def _log_grant(app_id: str) -> None:
 
 def _verify_pgp(manifest_path: Path) -> tuple[bool, str]:
     """
-    Verify the manifest's GPG detached signature.
+    Verify the manifest's GPG detached signature AND confirm signer identity.
 
-    Expects safe-app-manifest.json.sig adjacent to the manifest.
-    Uses: gpg --verify <sig> <manifest>
+    Uses gpg --status-fd=1 to get machine-readable output and parse
+    the primary key fingerprint from the VALIDSIG status line.
+    Expected fingerprint is read from WILLOW_PGP_FINGERPRINT env var.
 
     Returns (ok, reason).
     """
@@ -75,14 +81,30 @@ def _verify_pgp(manifest_path: Path) -> tuple[bool, str]:
 
     try:
         result = subprocess.run(
-            ["gpg", "--verify", str(sig_path), str(manifest_path)],
+            ["gpg", "--verify", "--status-fd=1", str(sig_path), str(manifest_path)],
             capture_output=True,
             timeout=5,
         )
-        if result.returncode == 0:
-            return True, "signature verified"
-        stderr = result.stderr.decode("utf-8", errors="replace").strip()
-        return False, f"gpg verify failed: {stderr[:200]}"
+        if result.returncode != 0:
+            stderr = result.stderr.decode("utf-8", errors="replace").strip()
+            return False, f"gpg verify failed: {stderr[:200]}"
+
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        signer_fp = None
+        for line in stdout.splitlines():
+            if line.startswith("[GNUPG:] VALIDSIG"):
+                parts = line.split()
+                # parts[11] is the primary key fingerprint (0-based, after "[GNUPG:]" and "VALIDSIG")
+                if len(parts) >= 12:
+                    signer_fp = parts[11].upper()
+                    break
+
+        if signer_fp is None:
+            return False, "gpg returned success but no VALIDSIG in status output"
+        if signer_fp != _EXPECTED_FP:
+            return False, f"signature by unexpected key: {signer_fp[:16]}... (expected: {_EXPECTED_FP[:16]}...)"
+        return True, "signature verified"
+
     except FileNotFoundError:
         return False, "gpg not found on PATH"
     except subprocess.TimeoutExpired:
