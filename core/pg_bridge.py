@@ -16,7 +16,17 @@ Optional dependency. Shell and MCP server work without it (standalone mode).
 """
 
 import os
+import re as _re
 from typing import Optional
+
+_SCHEMA_NAME_RE = _re.compile(r'^[a-z][a-z0-9_]*$')
+
+
+def _validate_schema_name(name: str) -> str:
+    """Raise ValueError if name is not a safe Postgres schema identifier."""
+    if not _SCHEMA_NAME_RE.match(name):
+        raise ValueError(f"Invalid schema name: {name!r} — must match ^[a-z][a-z0-9_]*$")
+    return name
 
 
 def _pg_params() -> dict:
@@ -453,6 +463,7 @@ class PgBridge:
     def agent_create(self, name: str, trust: str = "WORKER", role: str = "",
                      folder_root: str = None) -> dict:
         """Create agent schema with pipeline tables + folder structure."""
+        name = _validate_schema_name(name)
         conn = self._get_conn()
         cur = conn.cursor()
         try:
@@ -542,6 +553,7 @@ class PgBridge:
                              session_id: str, cwd: str = None,
                              turn_count: int = 0, file_size: int = 0) -> dict:
         """Register a raw JSONL in the agent's schema. Returns BASE 17 ID."""
+        agent = _validate_schema_name(agent)
         jid = self.gen_id()
         conn = self._get_conn()
         cur = conn.cursor()
@@ -565,6 +577,7 @@ class PgBridge:
         """Write an extracted atom to the agent's .tmp (status='tmp'). Requires certainty > 0.95."""
         if certainty < 0.95:
             return {"status": "rejected", "reason": f"certainty {certainty} < 0.95 threshold"}
+        agent = _validate_schema_name(agent)
         aid = self.gen_id()
         conn = self._get_conn()
         cur = conn.cursor()
@@ -584,6 +597,7 @@ class PgBridge:
 
     def binder_file(self, agent: str, jsonl_id: str, dest_path: str) -> dict:
         """Move JSONL to agent's .tmp/ folder, update status."""
+        agent = _validate_schema_name(agent)
         import shutil
         conn = self._get_conn()
         cur = conn.cursor()
@@ -611,6 +625,7 @@ class PgBridge:
     def binder_propose_edge(self, agent: str, source_atom: str, target_atom: str,
                             edge_type: str) -> dict:
         """Propose an edge found while filing. Status='tmp' until ratified."""
+        agent = _validate_schema_name(agent)
         conn = self._get_conn()
         cur = conn.cursor()
         try:
@@ -630,6 +645,7 @@ class PgBridge:
     def ratify(self, agent: str, jsonl_id: str, approve: bool = True,
                cache_path: str = None) -> dict:
         """Ratify or reject a JSONL and all its extracted atoms/edges."""
+        agent = _validate_schema_name(agent)
         new_status = "ratified" if approve else "rejected"
         conn = self._get_conn()
         cur = conn.cursor()
