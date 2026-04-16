@@ -94,13 +94,16 @@ def _verify_pgp(manifest_path: Path) -> tuple[bool, str]:
         for line in stdout.splitlines():
             if line.startswith("[GNUPG:] VALIDSIG"):
                 parts = line.split()
-                # parts[11] is the primary key fingerprint (0-based, after "[GNUPG:]" and "VALIDSIG")
+                # Full line: [GNUPG:] VALIDSIG <subkey-fp> <date> <ts> <ts-exp>
+                #            <expire> <reserved> <pk-algo> <hash-algo> <sig-class> <primary-fp>
+                # parts indices: 0=[GNUPG:] 1=VALIDSIG 2=subkey-fp ... 11=primary-fp
                 if len(parts) >= 12:
                     signer_fp = parts[11].upper()
                     break
 
         if signer_fp is None:
-            return False, "gpg returned success but no VALIDSIG in status output"
+            excerpt = stdout[:200].replace("\n", " ")
+            return False, f"gpg returned success but no VALIDSIG in status output — got: {excerpt}"
         if signer_fp != _EXPECTED_FP:
             return False, f"signature by unexpected key: {signer_fp[:16]}... (expected: {_EXPECTED_FP[:16]}...)"
         return True, "signature verified"
