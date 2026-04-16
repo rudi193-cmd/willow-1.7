@@ -36,7 +36,9 @@ def _validate_file_path(path: str) -> str:
         raise ValueError("Empty file path")
     resolved = _Path(path).resolve()
     home = _Path.home().resolve()
-    if not str(resolved).startswith(str(home)):
+    try:
+        resolved.relative_to(home)
+    except ValueError:
         raise ValueError(
             f"Path {path!r} resolves outside home directory: {resolved}"
         )
