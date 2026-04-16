@@ -34,3 +34,36 @@ class TestValidateShellCmd:
 
     def test_blocked_whitespace(self):
         assert _validate_shell_cmd("   ") is False
+
+
+class TestRunOnceGateFatal:
+    def test_run_once_fails_task_on_gate_error(self):
+        """SAP gate exception causes task to be failed, not silently skipped."""
+        from unittest.mock import MagicMock
+        import sys
+        import kart_worker
+
+        mock_pg = MagicMock()
+        mock_pg.claim_task.return_value = {
+            "task_id": "test-t1",
+            "task": "echo hello",
+            "submitted_by": "test",
+        }
+
+        # Temporarily make kart_client unavailable so the 'from ... import' raises ImportError
+        saved = sys.modules.get("sap.clients.kart_client")
+        sys.modules["sap.clients.kart_client"] = None  # forces ImportError on 'from' import
+
+        try:
+            result = kart_worker.run_once(mock_pg)
+        finally:
+            if saved is None:
+                sys.modules.pop("sap.clients.kart_client", None)
+            else:
+                sys.modules["sap.clients.kart_client"] = saved
+
+        # Task should be failed, not executed
+        mock_pg.fail_task.assert_called_once()
+        assert "SAP gate error" in mock_pg.fail_task.call_args[0][1]
+        # run_once should return True (task was processed, even if failed)
+        assert result is True

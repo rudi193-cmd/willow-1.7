@@ -127,17 +127,20 @@ def execute_task(task_text: str) -> dict:
                 ) as f:
                     f.write(cmd)
                     tmp_path = f.name
-                os.chmod(tmp_path, 0o755)
                 env = os.environ.copy()
                 env["PYTHONUNBUFFERED"] = "1"
                 try:
+                    os.chmod(tmp_path, 0o755)
                     proc = subprocess.Popen(
-                        ['bash', tmp_path],
+                        ['bash', '--', tmp_path],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                         env=env
                     )
                 finally:
-                    os.unlink(tmp_path)
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
             else:
                 if not _validate_shell_cmd(cmd):
                     outputs.append(f"[kart] BLOCKED: command rejected — not in allowed prefix list: {cmd[:80]}")
@@ -219,7 +222,9 @@ def run_once(pg) -> bool:
             print(f"[kart] SAP denied {task_id}")
             return True
     except Exception as e:
-        print(f"[kart] SAP check skipped (non-fatal): {e}")
+        pg.fail_task(task_id, f"SAP gate error: {e}")
+        print(f"[kart] SAP gate error (task failed): {e}")
+        return True
 
     result = execute_task(task_text)
 
