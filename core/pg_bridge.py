@@ -17,10 +17,12 @@ Optional dependency. Shell and MCP server work without it (standalone mode).
 
 import os
 import re as _re
+import logging as _logging
 from pathlib import Path as _Path
 from typing import Optional
 
 _SCHEMA_NAME_RE = _re.compile(r'^[a-z][a-z0-9_]*$')
+_logger = _logging.getLogger("pg_bridge")
 
 
 def _validate_schema_name(name: str) -> str:
@@ -105,21 +107,21 @@ class PgBridge:
         try:
             conn = self._get_conn()
             cur = conn.cursor()
-            terms = " | ".join(t.strip() for t in query.split() if t.strip())
             cur.execute("""
                 SELECT id, title, summary, source_type, source_id, category,
                        lattice_domain, lattice_type, lattice_status,
-                       ts_rank(search_vector, to_tsquery('english', %s)) AS rank
+                       ts_rank(search_vector, plainto_tsquery('english', %s)) AS rank
                 FROM knowledge
-                WHERE search_vector @@ to_tsquery('english', %s)
+                WHERE search_vector @@ plainto_tsquery('english', %s)
                 ORDER BY rank DESC
                 LIMIT %s
-            """, (terms, terms, limit))
+            """, (query, query, limit))
             columns = [d[0] for d in cur.description]
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("search_knowledge failed: %s", e)
             return []
 
     def search_entities(self, query: str, limit: int = 20) -> list[dict]:
@@ -138,7 +140,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("search_entities failed: %s", e)
             return []
 
     def search_ganesha(self, query: str, limit: int = 20) -> list[dict]:
@@ -157,7 +160,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("search_ganesha failed: %s", e)
             return []
 
     # ── Opus ─────────────────────────────────────────────────────────
@@ -178,7 +182,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("search_opus failed: %s", e)
             return []
 
     def ingest_opus_atom(self, content: str, domain: str = "meta",
@@ -213,7 +218,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("opus_feedback failed: %s", e)
             return []
 
     def opus_feedback_write(self, domain: str, principle: str, source: str = "self") -> bool:
@@ -267,7 +273,8 @@ class PgBridge:
             results = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return results
-        except Exception:
+        except Exception as e:
+            _logger.warning("edges_for failed: %s", e)
             return []
 
     # ── Ingest ────────────────────────────────────────────────────────
@@ -291,6 +298,7 @@ class PgBridge:
             cur.close()
             return row[0] if row else None
         except Exception as e:
+            _logger.warning("ingest_atom failed: %s", e)
             self._last_ingest_error = str(e)
             return None
 
@@ -464,10 +472,11 @@ class PgBridge:
 
     @staticmethod
     def gen_id(length: int = 5) -> str:
-        """Generate a BASE 17 ID."""
-        import time, random
+        """Generate a BASE 17 ID using cryptographically random source."""
+        import secrets
         _ALPHABET = "0123456789ACEHKLNRTXZ"
-        seed = int(time.time() * 1000) ^ os.getpid() ^ random.randint(0, 0xFFFFFF)
+        # Use secrets.randbits for unpredictable seed
+        seed = secrets.randbits(64)
         chars = []
         for _ in range(length):
             seed, rem = divmod(seed, 17)
@@ -561,7 +570,8 @@ class PgBridge:
             ]}
         except Exception as e:
             cur.close()
-            return {"status": "error", "error": str(e)}
+            _logger.error("agent_create(%s) failed: %s", name, e)
+            return {"status": "error", "error": "database error — check logs"}
 
     # ── Jeles: register + extract from JSONL ─────────────────────
 
@@ -585,7 +595,8 @@ class PgBridge:
             return {"id": jid if row else None, "status": "registered" if row else "duplicate"}
         except Exception as e:
             cur.close()
-            return {"error": str(e)}
+            _logger.error("jeles_register_jsonl(%s) failed: %s", agent, e)
+            return {"error": "database error — check logs"}
 
     def jeles_extract_atom(self, agent: str, jsonl_id: str, content: str,
                            domain: str = "meta", depth: int = 1,
@@ -607,7 +618,8 @@ class PgBridge:
             return {"id": aid, "status": "tmp"}
         except Exception as e:
             cur.close()
-            return {"error": str(e)}
+            _logger.error("jeles_extract_atom(%s) failed: %s", agent, e)
+            return {"error": "database error — check logs"}
 
     # ── Binder: file JSONL + propose edges ───────────────────────
 
@@ -625,6 +637,11 @@ class PgBridge:
                 return {"error": "jsonl not found", "id": jsonl_id}
             source = _validate_file_path(row[0])
             dest_path = _validate_file_path(dest_path)
+            source_p = _Path(source)
+            if source_p.is_symlink():
+                cur.close()
+                _logger.warning("binder_file: rejecting symlink source: %s", source)
+                return {"error": "symlink not allowed as source path"}
             _Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, dest_path)
             cur.execute(f"""
@@ -634,9 +651,13 @@ class PgBridge:
             """, (dest_path, jsonl_id))
             cur.close()
             return {"id": jsonl_id, "status": "filed_tmp", "path": dest_path}
+        except ValueError:
+            cur.close()
+            raise  # re-raise path validation errors (safe, our own messages)
         except Exception as e:
             cur.close()
-            return {"error": str(e)}
+            _logger.error("binder_file(%s/%s) failed: %s", agent, jsonl_id, e)
+            return {"error": "database error — check logs"}
 
     def binder_propose_edge(self, agent: str, source_atom: str, target_atom: str,
                             edge_type: str) -> dict:
@@ -654,7 +675,8 @@ class PgBridge:
             return {"status": "proposed", "edge": f"{source_atom} --{edge_type}--> {target_atom}"}
         except Exception as e:
             cur.close()
-            return {"error": str(e)}
+            _logger.error("binder_propose_edge(%s) failed: %s", agent, e)
+            return {"error": "database error — check logs"}
 
     # ── Ratification ─────────────────────────────────────────────
 
@@ -673,6 +695,11 @@ class PgBridge:
                 if row and row[0]:
                     import shutil
                     filed = _validate_file_path(row[0])
+                    filed_p = _Path(filed)
+                    if filed_p.is_symlink():
+                        _logger.warning("ratify: rejecting symlink: %s", filed)
+                        cur.close()
+                        return {"error": "symlink not allowed"}
                     _Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(filed, cache_path)
                 cur.execute(f"""
@@ -711,7 +738,8 @@ class PgBridge:
             }
         except Exception as e:
             cur.close()
-            return {"error": str(e)}
+            _logger.error("ratify(%s/%s) failed: %s", agent, jsonl_id, e)
+            return {"error": "database error — check logs"}
 
 
 def try_connect() -> Optional[PgBridge]:
