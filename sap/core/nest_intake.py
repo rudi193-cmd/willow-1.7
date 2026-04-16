@@ -686,6 +686,7 @@ def scan_nest() -> list:
     staged = []
     with _SCAN_LOCK:
         for item in sorted(nest.iterdir()):
+            # is_file() follows symlinks on POSIX; is_symlink() must be explicit to reject them
             if not item.is_file() or item.name.startswith(".") or item.is_symlink():
                 continue
             if item.name in already_names:

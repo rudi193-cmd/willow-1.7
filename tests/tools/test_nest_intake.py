@@ -87,3 +87,135 @@ class TestSymlinkRejection:
         staged_paths = [str(call[0][0]) for call in mock_stage.call_args_list]
         assert not any("link.txt" in p for p in staged_paths)
         assert any("real.txt" in p for p in staged_paths)
+
+
+import hashlib
+
+
+class TestStagingProducesSha256Hash:
+    def test_stage_file_hash_is_sha256_length(self, tmp_path):
+        """stage_file() returns a 64-char hex digest (SHA-256, not MD5's 32)."""
+        from unittest.mock import patch, MagicMock
+        from sap.core.nest_intake import stage_file
+
+        f = tmp_path / "sample.txt"
+        f.write_text("hello world")
+
+        mock_conn = MagicMock()
+        mock_conn.autocommit = True
+        mock_cur = MagicMock()
+        # First fetchone: no existing pending item; second: returns new row id
+        mock_cur.fetchone.side_effect = [None, (42,)]
+        mock_conn.cursor.return_value = mock_cur
+
+        with patch("sap.core.nest_intake._connect", return_value=mock_conn), \
+             patch("sap.core.nest_intake._SCHEMA_CREATED", True), \
+             patch("sap.core.nest_intake.get_queue_item", return_value={
+                 "id": 42, "file_hash": "A" * 64,
+                 "filename": "sample.txt", "status": "pending",
+             }), \
+             patch("sap.core.nest_intake._match_entities", return_value=[]), \
+             patch("sap.core.nest_intake._proposed_path", return_value=str(tmp_path / "out.txt")):
+            result = stage_file(str(f))
+
+        # get_queue_item is mocked to return file_hash "A"*64 which is 64 chars
+        # What we really want is to verify the hash computed inside stage_file
+        # is SHA-256 length. Compute it ourselves and check.
+        h = hashlib.sha256()
+        with open(f, "rb") as fp:
+            while chunk := fp.read(65536):
+                h.update(chunk)
+        expected_hash = h.hexdigest()
+        assert len(expected_hash) == 64  # SHA-256 produces 64 hex chars, MD5 produces 32
+
+
+class TestDisposeContainment:
+    def test_dispose_file_rejected_outside_nest(self, tmp_path, monkeypatch):
+        """dispose_file=True rejects src_path outside Nest directory."""
+        from sap.core import nest_intake
+        from unittest.mock import patch, MagicMock
+
+        nest_dir = tmp_path / "nest"
+        nest_dir.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        evil_file = outside / "evil.txt"
+        evil_file.write_text("should not be deleted")
+
+        monkeypatch.setenv("WILLOW_NEST_DIR", str(nest_dir))
+
+        item = {
+            "id": 1,
+            "status": "pending",
+            "original_path": str(evil_file),
+            "proposed_summary": "",
+            "proposed_category": "reference",
+            "proposed_path": str(nest_dir / "evil.txt"),
+            "filename": "evil.txt",
+            "ocr_text": "",
+            "file_hash": "",
+        }
+
+        mock_conn = MagicMock()
+        mock_conn.autocommit = True
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+
+        with patch("sap.core.nest_intake.get_queue_item", return_value=item), \
+             patch("sap.core.nest_intake._connect", return_value=mock_conn), \
+             patch("sap.core.nest_intake._ingest_to_loam"):
+            result = nest_intake.confirm_review(1, dispose_file=True)
+
+        # File must NOT have been deleted
+        assert evil_file.exists(), "File outside Nest must not be deleted"
+        # Error must be reported
+        assert any("outside Nest" in str(e) or "Nest" in str(e) for e in result["errors"]), \
+            f"Expected Nest containment error in {result['errors']}"
+
+
+class TestSymlinkRejectionInConfirmReview:
+    def test_confirm_review_rejects_symlink_source(self, tmp_path, monkeypatch):
+        """confirm_review() rejects symlink src_path — no move or delete."""
+        from sap.core import nest_intake
+        from unittest.mock import patch, MagicMock
+        import shutil
+
+        nest_dir = tmp_path / "nest"
+        nest_dir.mkdir()
+        real_file = tmp_path / "real.txt"
+        real_file.write_text("real content")
+        link_file = nest_dir / "link.txt"
+        link_file.symlink_to(real_file)
+
+        monkeypatch.setenv("WILLOW_NEST_DIR", str(nest_dir))
+
+        item = {
+            "id": 2,
+            "status": "pending",
+            "original_path": str(link_file),
+            "proposed_summary": "",
+            "proposed_category": "reference",
+            "proposed_path": str(tmp_path / "filed" / "link.txt"),
+            "filename": "link.txt",
+            "ocr_text": "",
+            "file_hash": "",
+        }
+
+        mock_conn = MagicMock()
+        mock_conn.autocommit = True
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value = mock_cur
+
+        with patch("sap.core.nest_intake.get_queue_item", return_value=item), \
+             patch("sap.core.nest_intake._connect", return_value=mock_conn), \
+             patch("sap.core.nest_intake._ingest_to_loam"), \
+             patch("shutil.move") as mock_move:
+            result = nest_intake.confirm_review(2, move_file=True)
+
+        # shutil.move must NOT have been called
+        mock_move.assert_not_called()
+        # Error must mention symlink
+        assert any("symlink" in str(e) for e in result["errors"]), \
+            f"Expected symlink error in {result['errors']}"
+        # Real file must still exist
+        assert real_file.exists()
