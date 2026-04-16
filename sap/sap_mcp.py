@@ -79,7 +79,7 @@ server = Server("willow-store")
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
+    _tools = [
         types.Tool(
             name="store_put",
             description="Write a record to a collection. Append-only. Returns (id, action) where action is work_quiet/flag/stop from angular deviation rubric.",
@@ -639,6 +639,14 @@ async def list_tools() -> list[types.Tool]:
             },
         ),
     ]
+    _app_id_field = {"type": "string", "description": "SAFE app identifier for authorization"}
+    for _tool in _tools:
+        _tool.inputSchema.setdefault("properties", {})["app_id"] = _app_id_field
+        if "required" not in _tool.inputSchema:
+            _tool.inputSchema["required"] = []
+        if "app_id" not in _tool.inputSchema["required"]:
+            _tool.inputSchema["required"].append("app_id")
+    return _tools
 
 
 # ── Tool dispatch ─────────────────────────────────────────────────────────────
@@ -646,6 +654,14 @@ async def list_tools() -> list[types.Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
+        app_id = arguments.get("app_id", "")
+        if _SAP_GATE and not sap_authorized(app_id):
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": "unauthorized",
+                "app_id": app_id,
+                "tool": name,
+            }))]
+
         if name == "store_put":
             rid, action, proposals = store.put(
                 arguments["collection"],
