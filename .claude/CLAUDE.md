@@ -53,7 +53,7 @@ The porch comes down when this ships.
 ## Open Work
 
 - SAFE folder seeds — 16 folders exist, 0 seeded. **Sean's explicit gate required.**
-- `credentials.json` at repo root — scaffolded, Sean fills offline (Groq / Cerebras / SambaNova)
+- `credentials.json` at repo root — moot. Groq / Cerebras / SambaNova are already live in the fleet.
 - UTETY SAFE manifest missing — `SAFE/Applications/UTETY/` not seeded or signed
 
 ## Done

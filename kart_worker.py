@@ -106,6 +106,7 @@ def execute_task(task_text: str) -> dict:
     for cmd_type, cmd in commands:
         step += 1
         label = cmd.splitlines()[0][:80] if cmd_type == 'script' else cmd
+        print(f"[kart] >>> {label}", flush=True)
         try:
             if cmd_type == 'script':
                 with tempfile.NamedTemporaryFile(
@@ -114,24 +115,56 @@ def execute_task(task_text: str) -> dict:
                     f.write(cmd)
                     tmp_path = f.name
                 os.chmod(tmp_path, 0o755)
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
                 try:
-                    result = subprocess.run(
+                    proc = subprocess.Popen(
                         ['bash', tmp_path],
-                        capture_output=True, text=True, timeout=300
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                        env=env
                     )
                 finally:
                     os.unlink(tmp_path)
             else:
-                result = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=300
+                # PYTHONUNBUFFERED forces line-by-line stdout from Python subprocesses
+                env = os.environ.copy()
+                env["PYTHONUNBUFFERED"] = "1"
+                proc = subprocess.Popen(
+                    cmd, shell=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                    env=env
                 )
-            output = result.stdout.strip()
-            err = result.stderr.strip()
+
+            stdout_lines = []
+            stderr_lines = []
+            import threading, time as _time
+
+            def _read_stderr(p, buf):
+                for line in p.stderr:
+                    buf.append(line.rstrip())
+                    print(f"[kart] ERR: {line.rstrip()}", flush=True)
+
+            t = threading.Thread(target=_read_stderr, args=(proc, stderr_lines), daemon=True)
+            t.start()
+
+            deadline = _time.monotonic() + 1800
+            for line in proc.stdout:
+                line = line.rstrip()
+                stdout_lines.append(line)
+                print(f"[kart] OUT: {line}", flush=True)
+                if _time.monotonic() > deadline:
+                    proc.kill()
+                    errors.append(f"{label} → timeout after 1800s")
+                    break
+
+            proc.wait()
+            t.join(timeout=5)
+
+            output = "\n".join(stdout_lines).strip()
+            err = "\n".join(stderr_lines).strip()
             outputs.append(f"$ {label}\n{output}" + (f"\nSTDERR: {err}" if err else ""))
-            if result.returncode != 0:
-                errors.append(f"{label} → exit {result.returncode}: {err}")
-        except subprocess.TimeoutExpired:
-            errors.append(f"{label} → timeout after 300s")
+            if proc.returncode not in (0, -9):
+                errors.append(f"{label} → exit {proc.returncode}: {err}")
         except Exception as e:
             errors.append(f"{label} → {e}")
 

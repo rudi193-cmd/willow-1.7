@@ -1275,18 +1275,32 @@ def _chat_ollama(agent: str, message: str) -> str | None:
     try:
         import urllib.request
         data = json.dumps({
-            "model": os.environ.get("WILLOW_OLLAMA_MODEL", "llama3.2"),
+            "model": os.environ.get("WILLOW_OLLAMA_MODEL", "qwen2.5:3b"),
             "messages": [
                 {"role": "system", "content": f"You are {agent}, a Willow agent. Be concise."},
                 {"role": "user", "content": message},
             ],
-            "stream": False,
+            "stream": True,
         }).encode()
         url = os.environ.get("OLLAMA_URL", "http://localhost:11434") + "/api/chat"
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-            return result.get("message", {}).get("content", "")
+        chunks = []
+        # Stream with a per-chunk timeout; CPU inference is ~5s/token so allow 300s total
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            for line in resp:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        chunks.append(token)
+                    if chunk.get("done"):
+                        break
+                except json.JSONDecodeError:
+                    continue
+        return "".join(chunks) if chunks else None
     except Exception:
         return None
 
