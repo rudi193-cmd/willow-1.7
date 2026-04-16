@@ -17,3 +17,6 @@ store/
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# MCP config (may contain bearer tokens)
+.mcp.json

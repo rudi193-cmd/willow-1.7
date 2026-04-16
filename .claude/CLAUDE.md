@@ -31,10 +31,10 @@ The porch comes down when this ships.
 | Delivery | SAP Deliver | `sap/core/deliver.py` |
 | Storage | SOIL — SQLite per collection | `core/willow_store.py` |
 | Memory | LOAM — Postgres, Unix socket | `core/pg_bridge.py` |
-| Server | 44 tools, single process, no HTTP | `sap/sap_mcp.py` |
+| Server | 49 tools, single process, no HTTP | `sap/sap_mcp.py` |
 | Clients | Professor / Kart / Generic | `sap/clients/` |
 
-**Authorization chain:** SAFE folder exists → manifest present → manifest.sig present → `gpg --verify` passes. Any failure → deny + log to `sap/log/gaps.jsonl`. Revocation = delete folder or signature.
+**Authorization chain:** `app_id` required on every tool call → SAFE folder exists → manifest present → manifest.sig present → `gpg --verify --status-fd=1` passes + primary key fingerprint matches `WILLOW_PGP_FINGERPRINT`. Any failure → deny + log to `sap/log/gaps.jsonl`. ENGINEER/OPERATOR IDs (`_INFRA_IDS`) bypass PGP. Revocation = delete folder or signature.
 
 **The vision:** SLM on reclaimed sda4, trained on 1.6 operational patterns + Consus math. Yggdrasil waits behind the gate.
 
@@ -52,7 +52,6 @@ The porch comes down when this ships.
 
 ## Open Work
 
-- Phase 8 (sda4 wipe) — **Sean's explicit gate required.**
 - `credentials.json` at repo root — moot. Groq / Cerebras / SambaNova are already live in the fleet.
 
 ## Done
