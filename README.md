@@ -1,32 +1,105 @@
 # willow-1.7 — SAP MCP Server
-b17: W17H0 · ΔΣ=42
+<!-- b17: W17H0 · ΔΣ=42 -->
 
-Portless MCP server for the Willow AI agent system. Replaces the HTTP shim
-from 1.4/1.5 with a direct stdio process — no exposed ports, no supervisor.
+**A portless MCP server for a personal AI agent system.**
 
-Entry point: `./willow.sh` → `sap/sap_mcp.py`  
-Claude Code connects via `.mcp.json`.
+Claude Code connects to this server and gains 44 tools for persistent memory, structured knowledge, local inference, task dispatch, and file intake — all running on a local machine with no exposed network ports, no supervisor process, and no HTTP.
+
+This is the infrastructure layer. It does not contain personas, lore, or application logic. It is the bus everything else rides.
+
+---
+
+## What It Is
+
+willow-1.7 is a [Model Context Protocol](https://modelcontextprotocol.io) server. When Claude Code starts, it launches `willow.sh`, which starts `sap/sap_mcp.py` as a stdio subprocess. Claude Code communicates with the server over that process's stdin/stdout. No network, no ports.
+
+The server exposes 44 tools organized into six functional groups:
+
+| Group | Tools | Purpose |
+|---|---|---|
+| **SOIL** (local store) | `store_put`, `store_get`, `store_search`, `store_update`, `store_delete`, `store_add_edge`, `store_edges_for`, `store_stats`, `store_audit`, `store_search_all` | SQLite-backed key/value store with audit trail and graph edges |
+| **LOAM** (knowledge graph) | `willow_knowledge_search`, `willow_knowledge_ingest`, `willow_query`, `willow_agents`, `willow_status`, `willow_system_status`, `willow_journal`, `willow_governance`, `willow_persona`, `willow_speak`, `willow_route` | Postgres-backed knowledge graph: atoms, entities, edges |
+| **Chat & inference** | `willow_chat` | Route a message to local Ollama or free fleet fallback |
+| **Task queue** | `willow_task_submit`, `willow_task_status`, `willow_task_list` | Submit shell tasks to Kart; poll results |
+| **Pipeline** | `willow_agent_create`, `willow_jeles_register`, `willow_jeles_extract`, `willow_binder_file`, `willow_binder_edge`, `willow_ratify`, `willow_base17`, `willow_handoff_latest`, `willow_handoff_search`, `willow_handoff_rebuild` | Agent schema creation, JSONL lifecycle, ratification |
+| **Nest intake** | `willow_nest_scan`, `willow_nest_queue`, `willow_nest_file` | Drop files into a staging directory; classify and route them with human approval |
+| **Opus** | `opus_search`, `opus_ingest`, `opus_feedback`, `opus_feedback_write`, `opus_journal` | Agent-scoped atom and feedback store |
+| **Jeles** | `jeles_fetch`, `jeles_sources` | Curated reads from a registry of trusted external APIs |
+| **Server control** | `willow_reload`, `willow_restart_server` | Hot-reload modules without restarting Claude Code |
 
 ---
 
 ## Architecture
 
-| Layer | Name | File |
-|---|---|---|
-| Gate | SAP v2 — PGP-hardened | `sap/core/gate.py` |
-| Context | Assembler | `sap/core/context.py` |
-| Delivery | SAP Deliver | `sap/core/deliver.py` |
-| Storage | SOIL — SQLite per collection | `core/willow_store.py` |
-| Memory | LOAM — Postgres, Unix socket | `core/pg_bridge.py` |
-| Server | 44 tools, single process, no HTTP | `sap/sap_mcp.py` |
-| Clients | Professor / Kart / Generic | `sap/clients/` |
+```
+Claude Code  ──stdio──►  willow.sh  ──►  sap/sap_mcp.py
+                                              │
+                            ┌─────────────────┼─────────────────┐
+                            │                 │                 │
+                          SAP Gate        SOIL              LOAM
+                       (gate.py)     (willow_store.py)  (pg_bridge.py)
+                       PGP verify      SQLite/coll.       Postgres
+                       SAFE manifests  audit trail        knowledge graph
+                            │
+                       Context + Deliver
+                       (context.py, deliver.py)
+                       pulls KB atoms → injects into prompts
+                            │
+                       Clients
+                       sap/clients/
+                       professor_client.py  ← UTETY faculty
+                       kart_client.py       ← task authorization
+                       generic_client.py    ← any SAP app
+```
 
-**Authorization chain:** SAFE folder exists → manifest present → manifest.sig
-present → `gpg --verify` passes. Any failure → deny + log to `sap/log/gaps.jsonl`.
+### Layer summary
+
+| Layer | Name | File | What it does |
+|---|---|---|---|
+| Gate | SAP v2 | `sap/core/gate.py` | Four-step PGP authorization for every app access |
+| Context | Assembler | `sap/core/context.py` | Pulls KB atoms scoped to an app's permitted data streams |
+| Delivery | Formatter | `sap/core/deliver.py` | Formats assembled context into a system-prompt header |
+| Storage | SOIL | `core/willow_store.py` | SQLite per collection, append-only, full audit trail |
+| Memory | LOAM | `core/pg_bridge.py` | Postgres knowledge graph: atoms, entities, edges, task queue |
+| Server | SAP MCP | `sap/sap_mcp.py` | 44 tools, single process, stdio only |
+| Clients | — | `sap/clients/` | Professor, Kart, and generic app wrappers |
+| Task worker | KART | `kart_worker.py` | Polls task queue, executes shell commands, writes results |
+| Intake | Nest | `sap/core/nest_intake.py` | Classifies dropped files and stages them for human approval |
 
 ---
 
-## Setup (new machine)
+## Authorization: The SAP Gate
+
+Every application that wants KB context must pass a four-step check:
+
+1. **SAFE folder exists** — `$WILLOW_SAFE_ROOT/<app_id>/`
+2. **Manifest present** — `safe-app-manifest.json` in that folder
+3. **Signature present** — `safe-app-manifest.json.sig` adjacent to the manifest
+4. **GPG verifies the signature** — `gpg --verify <sig> <manifest>` returns 0
+
+Any failure → access denied, event logged to `sap/log/gaps.jsonl`. Revocation = delete the folder or its signature file. No code changes required.
+
+The server itself boots without a gate check — it is infrastructure, not an application.
+
+---
+
+## Design Principles
+
+**Portless.** No HTTP listeners. No new ports. The entire system communicates via Unix stdio (MCP) and Unix socket (Postgres). The surface area for external attack is zero.
+
+**Dual Commit.** AI proposes; human ratifies. The Nest intake pipeline, the JSONL ratification pipeline, and the Angular Deviation Rubric all operate on this principle. Nothing is committed to the graph or the filesystem without an explicit human decision.
+
+**Angular Deviation Rubric.** Every write to SOIL carries a `deviation` parameter (in radians). Small deviations (`< π/4`) proceed silently. Medium deviations (`π/4 – π/2`) are flagged. Large deviations (`> π/2`) are stopped and require ratification. Content triggers (crisis language, legal tripwires) generate Proposals regardless of deviation magnitude.
+
+**Archive, don't delete.** Soft-delete in SOIL makes records invisible to search/get but preserves them in the audit log. In Postgres, stale atoms move to `domain='archived'`. Nothing is permanently removed without explicit instruction.
+
+**Free fleet fallback.** Local Ollama is always tried first. If unavailable, inference falls back to Groq → Cerebras → SambaNova in order, using keys from `credentials.json`. All three providers offer free tiers.
+
+**BASE 17 IDs.** All agent-generated IDs use a 21-character alphabet (`0-9ACEHKLNRTXZ`) chosen to eliminate visually ambiguous characters. Five characters gives ~4M combinations — enough for session-scoped IDs without a database sequence.
+
+---
+
+## Setup
 
 ### 1. System prerequisites
 
@@ -40,9 +113,9 @@ sudo -u postgres createdb willow
 curl -fsSL https://ollama.ai/install.sh | sh
 ollama pull qwen2.5:3b   # default model
 
-# GPG (for SAFE manifest verification)
+# GPG (SAFE manifest verification)
 sudo apt install gnupg
-# Import the signing key: gpg --import <key.asc>
+gpg --import <your-signing-key.asc>
 ```
 
 ### 2. Python environment
@@ -53,59 +126,37 @@ source ~/.willow-venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Or with a system Python:
-```bash
-pip install -r requirements.txt
-export WILLOW_PYTHON=$(which python3)
-```
-
 ### 3. Credentials (fleet fallback)
 
 ```bash
 cp credentials.json.example credentials.json
-# Edit credentials.json — add Groq / Cerebras / SambaNova keys
-# Keys are tried in order with automatic failover
+# Fill in keys from Groq, Cerebras, and/or SambaNova
+# All three offer free tiers. Keys are tried in order (KEY, KEY_2, KEY_3)
+# with automatic failover on rate limit.
 ```
+
+`credentials.json` is gitignored. It never leaves your machine.
 
 ### 4. SAFE drive
 
-The authorization chain requires a SAFE folder structure. Default mount point:
-`/media/willow/SAFE/Applications/`
+The authorization chain requires signed manifests on a dedicated path.
+Default: `/media/willow/SAFE/Applications/`
 
-Override with:
+Override:
 ```bash
 export WILLOW_SAFE_ROOT=/your/safe/path
 ```
 
-Each app needs:
+Structure for each authorized app:
 ```
 SAFE/Applications/<app_id>/
   safe-app-manifest.json
-  safe-app-manifest.json.sig   # gpg --detach-sign
+  safe-app-manifest.json.sig   # gpg --detach-sign safe-app-manifest.json
 ```
 
-### 5. Environment variables
+### 5. Claude Code integration
 
-All have sensible defaults. Override as needed:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `WILLOW_PYTHON` | auto-detect | Python interpreter |
-| `WILLOW_PG_DB` | `willow` | Postgres database name |
-| `WILLOW_PG_USER` | `$(whoami)` | Postgres user (Unix socket peer auth) |
-| `WILLOW_SAFE_ROOT` | `/media/willow/SAFE/Applications` | SAFE folder root |
-| `WILLOW_STORE_ROOT` | `./store` | SQLite store root |
-| `WILLOW_CREDENTIALS` | `./credentials.json` | API key file |
-| `WILLOW_AGENT_NAME` | `heimdallr` | Active agent identity |
-| `WILLOW_HANDOFF_DIR` | `~/Ashokoa/agents/heimdallr/...` | Handoff file directory |
-| `WILLOW_NEST_DIR` | `~/.willow/Nest/heimdallr` | File intake staging dir |
-| `WILLOW_FILED_DIR` | `~/Ashokoa/Filed` | Filed document root |
-| `WILLOW_UTETY_ROOT` | `../safe-app-utety-chat` | Professor personas repo |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
-
-### 6. Claude Code integration
-
-Add to `.mcp.json` in your project:
+Add to your project's `.mcp.json`:
 
 ```json
 {
@@ -118,34 +169,96 @@ Add to `.mcp.json` in your project:
 }
 ```
 
-### 7. Verify
+Claude Code will launch `willow.sh` automatically at session start and connect via stdio.
+
+### 6. Verify
 
 ```bash
 ./willow.sh status    # check Postgres + Ollama
-./willow.sh verify    # verify all SAFE manifests (apps + professors)
-./willow.sh kart      # start Kart task queue daemon
+./willow.sh verify    # audit all SAFE manifests
+./willow.sh kart      # start Kart task queue worker
 ```
 
 ---
 
-## External dependencies (not in this repo)
+## Environment Variables
 
-- **`safe-app-utety-chat`** — professor personas (`personas.py`). Set
-  `WILLOW_UTETY_ROOT` to point at your clone. Required for `ProfessorClient`.
-- **SAFE drive** — signed manifests live on a physical drive or configurable
-  path. Not shipped with the repo.
-- **Postgres `willow` database** — schema created by agent tooling. Run
-  `willow_agent_create` via MCP to scaffold a new agent schema.
+All have sensible defaults. Export before running or add to `.env`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WILLOW_PYTHON` | auto-detect | Python interpreter (`~/.willow-venv/bin/python3` if present) |
+| `WILLOW_PG_DB` | `willow` | Postgres database name |
+| `WILLOW_PG_USER` | `$(whoami)` | Postgres user (Unix socket peer auth) |
+| `WILLOW_SAFE_ROOT` | `/media/willow/SAFE/Applications` | SAFE manifest root |
+| `WILLOW_STORE_ROOT` | `./store` | SQLite store root |
+| `WILLOW_CREDENTIALS` | `./credentials.json` | API key file path |
+| `WILLOW_AGENT_NAME` | `heimdallr` | Active agent identity |
+| `WILLOW_HANDOFF_DIR` | `~/Ashokoa/agents/heimdallr/…` | Session handoff file directory |
+| `WILLOW_HANDOFF_DB` | `$WILLOW_HANDOFF_DIR/handoffs.db` | SQLite handoffs index |
+| `WILLOW_NEST_DIR` | `~/.willow/Nest/heimdallr` | File intake staging directory |
+| `WILLOW_FILED_DIR` | `~/Ashokoa/Filed` | Filed document destination root |
+| `WILLOW_MEMORY_DIR` | `~/.claude/projects/…/memory` | Claude Code project memory path |
+| `WILLOW_UTETY_ROOT` | `../safe-app-utety-chat` | Professor personas repository |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `SAP_OLLAMA_THREADS` | `4` | CPU threads for Ollama inference |
 
 ---
 
 ## Running
 
 ```bash
-./willow.sh          # start MCP server (Claude Code connects automatically)
-./willow.sh kart     # start Kart worker daemon (polls every 5s)
-./willow.sh status   # health check
-./willow.sh verify   # SAFE manifest audit
+./willow.sh            # start MCP server (Claude Code connects automatically)
+./willow.sh kart       # start Kart worker daemon (polls every 5 seconds)
+./willow.sh status     # health check: Postgres + Ollama
+./willow.sh verify     # SAFE manifest audit: checks every signed app
+```
+
+---
+
+## External Dependencies (not in this repo)
+
+- **`safe-app-utety-chat`** — professor persona definitions (`personas.py`). Set `WILLOW_UTETY_ROOT` to point at your clone. Required for `ProfessorClient`.
+- **SAFE drive** — signed manifests live on a physical drive or at `WILLOW_SAFE_ROOT`. Not shipped with this repo.
+- **Postgres `willow` database** — schema created by agent tooling. Run `willow_agent_create` via MCP to scaffold a new agent schema.
+- **Ollama** — local inference. `willow.sh` checks that it's running. Install from [ollama.ai](https://ollama.ai).
+
+---
+
+## Repository Layout
+
+```
+willow-1.7/
+├── willow.sh                    # Entry point and environment launcher
+├── kart_worker.py               # KART task queue worker (run as daemon)
+├── credentials.json.example     # Credential template (copy → credentials.json)
+├── requirements.txt             # Python dependencies
+│
+├── core/                        # Storage layers (SOIL + LOAM)
+│   ├── willow_store.py          # SOIL: SQLite per-collection store
+│   └── pg_bridge.py             # LOAM: Postgres knowledge graph bridge
+│
+├── sap/                         # System Authorization Protocol
+│   ├── sap_mcp.py               # MCP server: all 44 tools, single process
+│   ├── migrate_credentials.py   # One-shot migration from willow-1.4 vault
+│   ├── patch_gguf_vocab.py      # GGUF vocab patcher for Yggdrasil models
+│   │
+│   ├── core/                    # SAP pipeline stages
+│   │   ├── gate.py              # PGP authorization gate
+│   │   ├── context.py           # Context assembler
+│   │   ├── deliver.py           # Context formatter
+│   │   ├── nest_intake.py       # File intake and staging
+│   │   └── classifier.py        # File content classifier
+│   │
+│   ├── clients/                 # Application-side SAP clients
+│   │   ├── professor_client.py  # UTETY professor interface
+│   │   ├── kart_client.py       # Task authorization wrapper
+│   │   └── generic_client.py    # Generic SAP app client
+│   │
+│   └── log/                     # Runtime access logs (gitignored)
+│       └── gaps.jsonl           # Denied access attempts
+│
+└── apps/                        # SAP application stubs (local, gitignored content)
 ```
 
 ---
