@@ -198,6 +198,11 @@ def get_manifest(app_id: str) -> Optional[dict]:
     Returns None if not authorized or manifest is malformed.
     Full auth chain runs — including PGP.
     """
+    try:
+        app_id = _validate_app_id(app_id)
+    except ValueError:
+        return None
+
     if not authorized(app_id):
         return None
 

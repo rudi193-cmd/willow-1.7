@@ -43,3 +43,14 @@ class TestValidateAppId:
     def test_rejects_starts_with_dot(self):
         with pytest.raises(ValueError):
             _validate_app_id(".hidden")
+
+    def test_authorized_logs_invalid_app_id(self):
+        """authorized() with hostile app_id calls _log_gap and returns False."""
+        from unittest.mock import patch
+        with patch("sap.core.gate._log_gap") as mock_gap:
+            from sap.core.gate import authorized
+            result = authorized("../../etc/passwd")
+        assert result is False
+        mock_gap.assert_called_once()
+        call_args = mock_gap.call_args
+        assert "Invalid app_id" in call_args[0][1]
