@@ -26,8 +26,6 @@ import sys
 import sqlite3 as _sqlite3
 from pathlib import Path
 
-from core.memory_sanitizer import scan_struct, log_flags as _sanitizer_log
-
 # ── Path setup ────────────────────────────────────────────────────────────────
 # SAP library
 _SAP_ROOT = Path(__file__).parent.parent  # willow-1.7/
@@ -38,6 +36,8 @@ if str(_SAP_ROOT) not in sys.path:
 _WILLOW_CORE = Path(__file__).parent.parent / "core"
 if str(_WILLOW_CORE) not in sys.path:
     sys.path.insert(0, str(_WILLOW_CORE))
+
+from core.memory_sanitizer import scan_struct, log_flags as _sanitizer_log
 
 # ── MCP SDK ───────────────────────────────────────────────────────────────────
 try:
