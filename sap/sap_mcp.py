@@ -1098,13 +1098,17 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
         elif name == "willow_handoff_rebuild":
             import subprocess
-            build_script = str(Path(HANDOFF_DB).parent / "build_handoff_db.py")
+            # Prefer the canonical repo script; fall back to agent-local copy.
+            _canonical = _SAP_ROOT.parent / "tools" / "build_handoff_db.py"
+            _local = Path(HANDOFF_DB).parent / "build_handoff_db.py"
+            build_script = str(_canonical) if _canonical.exists() else str(_local)
             if not Path(build_script).exists():
                 result = {"error": f"build script not found: {build_script}"}
             else:
                 proc = subprocess.run(
                     [sys.executable, build_script],
-                    capture_output=True, text=True, timeout=30,
+                    capture_output=True, text=True, timeout=60,
+                    env={**os.environ},
                 )
                 result = {
                     "stdout": proc.stdout.strip(),

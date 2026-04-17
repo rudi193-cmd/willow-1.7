@@ -34,6 +34,7 @@ export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 export WILLOW_AGENT_NAME="heimdallr"
 export WILLOW_HANDOFF_DIR="${HOME}/Ashokoa/agents/heimdallr/index/haumana_handoffs"
 export WILLOW_HANDOFF_DB="${WILLOW_HANDOFF_DIR}/handoffs.db"
+export WILLOW_HANDOFF_DIRS="${HOME}/Ashokoa/agents/heimdallr/index/haumana_handoffs:${HOME}/Ashokoa/agents/hanuman/index/haumana_handoffs:${HOME}/.willow/Nest/hanuman"
 export WILLOW_NEST_DIR="${HOME}/.willow/Nest/heimdallr"
 export WILLOW_MEMORY_DIR="${HOME}/.claude/projects/-home-sean-campbell-github-willow-1-7/memory"
 
