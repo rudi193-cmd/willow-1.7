@@ -23,7 +23,10 @@ b17: K17W0
 """
 
 import os
+import shutil as _shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -32,6 +35,91 @@ WILLOW_ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(WILLOW_ROOT))
 
 from core.pg_bridge import try_connect
+
+
+_BWRAP: str | None = _shutil.which("bwrap")
+_SANDBOX_WARNED = False
+
+
+def _bwrap_prefix() -> list[str]:
+    """Build bwrap argument list for sandboxed task execution."""
+    home = os.path.expanduser("~")
+    willow = str(WILLOW_ROOT)
+    args = [
+        "bwrap",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind", "/etc", "/etc",
+        "--dev", "/dev",
+        "--proc", "/proc",
+        "--tmpfs", "/tmp",
+        "--unshare-net",
+        "--unshare-pid",
+        "--die-with-parent",
+        "--bind", willow, willow,
+    ]
+    willow_store = os.path.join(home, ".willow")
+    if os.path.exists(willow_store):
+        args += ["--bind", willow_store, willow_store]
+    for path in ("/bin", "/lib", "/lib64", "/lib32", "/sbin"):
+        if os.path.exists(path):
+            args += ["--ro-bind", path, path]
+    return args
+
+
+def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
+    """
+    Spawn cmd sandboxed via bwrap when available, falling back to host execution.
+    Returns a running Popen with stdout/stderr as PIPE.
+    """
+    global _SANDBOX_WARNED
+    if _BWRAP:
+        prefix = _bwrap_prefix()
+        if cmd_type == "script":
+            proc = subprocess.Popen(
+                prefix + ["bash", "-s"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env,
+            )
+            proc.stdin.write(cmd)
+            proc.stdin.close()
+        else:
+            proc = subprocess.Popen(
+                prefix + ["bash", "-c", cmd],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env,
+            )
+        return proc
+
+    if not _SANDBOX_WARNED:
+        print("[kart] WARNING: bwrap not found — running unsandboxed", flush=True)
+        _SANDBOX_WARNED = True
+
+    if cmd_type == "script":
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".sh", prefix="kart_", delete=False
+        ) as f:
+            f.write(cmd)
+            tmp_path = f.name
+        try:
+            os.chmod(tmp_path, 0o755)
+            proc = subprocess.Popen(
+                ["bash", "--", tmp_path],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env,
+            )
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return proc
+
+    return subprocess.Popen(
+        cmd, shell=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, env=env,
+    )
 
 
 SHELL_STARTERS = (
@@ -119,41 +207,14 @@ def execute_task(task_text: str) -> dict:
         label = cmd.splitlines()[0][:80] if cmd_type == 'script' else cmd
         print(f"[kart] >>> {label}", flush=True)
         try:
-                # Fenced code blocks are trusted — callers are SAP-gate authenticated.
-            # Prefix validation does not apply to multi-line scripts.
-            if cmd_type == 'script':
-                with tempfile.NamedTemporaryFile(
-                    mode='w', suffix='.sh', prefix='kart_', delete=False
-                ) as f:
-                    f.write(cmd)
-                    tmp_path = f.name
-                env = os.environ.copy()
-                env["PYTHONUNBUFFERED"] = "1"
-                try:
-                    os.chmod(tmp_path, 0o755)
-                    proc = subprocess.Popen(
-                        ['bash', '--', tmp_path],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                        env=env
-                    )
-                finally:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
-            else:
-                if not _validate_shell_cmd(cmd):
-                    outputs.append(f"[kart] BLOCKED: command rejected — not in allowed prefix list: {cmd[:80]}")
-                    errors.append(f"blocked_command: {cmd[:80]}")
-                    continue
-                # PYTHONUNBUFFERED forces line-by-line stdout from Python subprocesses
-                env = os.environ.copy()
-                env["PYTHONUNBUFFERED"] = "1"
-                proc = subprocess.Popen(
-                    cmd, shell=True,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                    env=env
-                )
+            if cmd_type != 'script' and not _validate_shell_cmd(cmd):
+                outputs.append(f"[kart] BLOCKED: command rejected — not in allowed prefix list: {cmd[:80]}")
+                errors.append(f"blocked_command: {cmd[:80]}")
+                continue
+
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            proc = _spawn(cmd_type, cmd, env)
 
             stdout_lines = []
             stderr_lines = []

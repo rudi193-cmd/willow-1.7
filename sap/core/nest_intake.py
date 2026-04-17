@@ -133,6 +133,15 @@ def _ensure_schema():
                 reviewed_at      TIMESTAMPTZ
             )
         """)
+        # content_store: stable hash → current filesystem location.
+        # Paths in nest_review_queue are audit trail; this is the live pointer.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS content_store (
+                content_id   TEXT PRIMARY KEY,
+                current_path TEXT NOT NULL,
+                last_seen    TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
         cur.close()
         _SCHEMA_CREATED = True
         logger.info("NEST: schema ready")
@@ -426,6 +435,24 @@ def stage_file(file_path: str, file_hash: str = None) -> dict:
             file_hash = h.hexdigest()
         except Exception:
             file_hash = None
+
+    # Register in content_store: hash is the stable ID, path is mutable metadata.
+    if file_hash:
+        try:
+            _cs_conn = _connect()
+            _cs_conn.autocommit = True
+            _cs_cur = _cs_conn.cursor()
+            _cs_cur.execute("""
+                INSERT INTO content_store (content_id, current_path, last_seen)
+                VALUES (%s, %s, now())
+                ON CONFLICT (content_id) DO UPDATE
+                    SET current_path = EXCLUDED.current_path,
+                        last_seen    = now()
+            """, (file_hash, str(path)))
+            _cs_cur.close()
+            _cs_conn.close()
+        except Exception as _e:
+            logger.warning("NEST: content_store upsert failed for %s: %s", path.name, _e)
 
     # Strip NUL bytes (Postgres rejects them)
     def _pg_safe(s):

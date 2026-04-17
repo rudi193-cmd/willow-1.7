@@ -538,6 +538,7 @@ class PgBridge:
                     id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL,
                     source_path TEXT NOT NULL,
+                    content_id TEXT,
                     filed_path TEXT,
                     turn_count INTEGER,
                     cwd TEXT,
@@ -623,20 +624,37 @@ class PgBridge:
                              session_id: str, cwd: str = None,
                              turn_count: int = 0, file_size: int = 0) -> dict:
         """Register a raw JSONL in the agent's schema. Returns BASE 17 ID."""
+        import hashlib as _hashlib
+        import pathlib as _pathlib
         agent = _validate_schema_name(agent)
         jid = self.gen_id()
+
+        content_id = None
+        try:
+            p = _pathlib.Path(jsonl_path)
+            if p.exists() and p.is_file():
+                h = _hashlib.sha256()
+                with open(p, "rb") as f:
+                    while chunk := f.read(65536):
+                        h.update(chunk)
+                content_id = h.hexdigest()
+        except Exception as _e:
+            _logger.warning("jeles_register_jsonl: hash failed for %s: %s", jsonl_path, _e)
+
         conn = self._get_conn()
         cur = conn.cursor()
         try:
             cur.execute(f"""
-                INSERT INTO {agent}.raw_jsonls (id, session_id, source_path, cwd, turn_count, file_size, status)
-                VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                INSERT INTO {agent}.raw_jsonls
+                    (id, session_id, source_path, content_id, cwd, turn_count, file_size, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
                 ON CONFLICT (id) DO NOTHING
                 RETURNING id
-            """, (jid, session_id, jsonl_path, cwd, turn_count, file_size))
+            """, (jid, session_id, jsonl_path, content_id, cwd, turn_count, file_size))
             row = cur.fetchone()
             cur.close()
-            return {"id": jid if row else None, "status": "registered" if row else "duplicate"}
+            return {"id": jid if row else None, "status": "registered" if row else "duplicate",
+                    "content_id": content_id}
         except Exception as e:
             cur.close()
             _logger.error("jeles_register_jsonl(%s) failed: %s", agent, e)
