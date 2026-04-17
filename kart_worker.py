@@ -60,6 +60,9 @@ def _bwrap_prefix() -> list[str]:
     willow_store = os.path.join(home, ".willow")
     if os.path.exists(willow_store):
         args += ["--bind", willow_store, willow_store]
+    pg_socket_dir = "/var/run/postgresql"
+    if os.path.exists(pg_socket_dir):
+        args += ["--bind", pg_socket_dir, pg_socket_dir]
     for path in ("/bin", "/lib", "/lib64", "/lib32", "/sbin"):
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
