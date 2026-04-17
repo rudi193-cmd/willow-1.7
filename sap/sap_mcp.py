@@ -91,6 +91,12 @@ HANDOFF_DB = os.environ.get(
     "WILLOW_HANDOFF_DB",
     str(Path.home() / "Ashokoa" / "agents" / "hanuman" / "index" / "haumana_handoffs" / "handoffs.db"),
 )
+_DEFAULT_HANDOFF_DIRS = ":".join([
+    str(Path.home() / "Ashokoa" / "agents" / "heimdallr" / "index" / "haumana_handoffs"),
+    str(Path.home() / "Ashokoa" / "agents" / "hanuman" / "index" / "haumana_handoffs"),
+    str(Path.home() / ".willow" / "Nest" / "hanuman"),
+])
+HANDOFF_DIRS = os.environ.get("WILLOW_HANDOFF_DIRS", _DEFAULT_HANDOFF_DIRS)
 
 store = WillowStore(STORE_ROOT)
 server = Server("willow-store")
@@ -1099,7 +1105,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         elif name == "willow_handoff_rebuild":
             import subprocess
             # Prefer the canonical repo script; fall back to agent-local copy.
-            _canonical = _SAP_ROOT.parent / "tools" / "build_handoff_db.py"
+            _canonical = _SAP_ROOT / "tools" / "build_handoff_db.py"
             _local = Path(HANDOFF_DB).parent / "build_handoff_db.py"
             build_script = str(_canonical) if _canonical.exists() else str(_local)
             if not Path(build_script).exists():
@@ -1108,7 +1114,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 proc = subprocess.run(
                     [sys.executable, build_script],
                     capture_output=True, text=True, timeout=60,
-                    env={**os.environ},
+                    env={**os.environ, "WILLOW_HANDOFF_DIRS": HANDOFF_DIRS, "WILLOW_HANDOFF_DB": HANDOFF_DB},
                 )
                 result = {
                     "stdout": proc.stdout.strip(),
