@@ -98,6 +98,7 @@ _DEFAULT_HANDOFF_DIRS = ":".join([
     str(Path.home() / "Ashokoa" / "Filed" / "reference" / "willow-artifacts" / "documents"),
     str(Path.home() / "Ashokoa" / "Filed" / "reference" / "handoffs"),
     str(Path.home() / "Ashokoa" / "Filed" / "narrative" / "session-log"),
+    "+" + str(Path.home() / "Ashokoa" / "corpus"),
     "+" + str(Path.home() / "github" / "die-namic-system" / "docs"),
 ])
 HANDOFF_DIRS = os.environ.get("WILLOW_HANDOFF_DIRS", _DEFAULT_HANDOFF_DIRS)
