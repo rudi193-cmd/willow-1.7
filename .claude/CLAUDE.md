@@ -53,6 +53,9 @@ The porch comes down when this ships.
 ## Open Work
 
 - `credentials.json` at repo root — moot. Groq / Cerebras / SambaNova are already live in the fleet.
+- Phase 4 structural: store content-addressed IDs instead of raw paths in DB (`pg_bridge.py`, `nest_intake.py`)
+- Phase 4 structural: containerize `kart_worker` — run task execution in sandbox
+- MegaLens `diff_audit` + `code_intelligence` passes pending (pool back up, $5 credits)
 
 ## Done
 
@@ -62,6 +65,13 @@ The porch comes down when this ships.
 - Linux auth chain — Unix socket peer auth throughout (`86acb6e`)
 - SAFE manifests + PGP sigs — all 17 professors + utety-chat signed and verified
 - Heimdallr schema + identity — Postgres schema live, all env vars wired (`willow.sh`)
+- MegaLens security audit (ML-MO1YB1X4-9A10) — all 13 critical + 9 high + actionable mediums closed (`2026-04-16`)
+  - SQL injection, RCE, missing auth, PGP bypass, file read/move chains — all patched
+  - Per-tool `app_id` auth wired to all 49 tools (`10fa1c0`)
+  - PGP fingerprint pinned, path traversal blocked, symlinks rejected, SHA-256, safe IDs
+  - HIGH-2/3/7: allowlist gate, domain scoping, schema limit (`9661539`)
+  - F-022/F-023: silent write exceptions logged, `agent_create()` transactional (`f85294c`)
+- `tools/sandbox_memory_test.py` — memory auditor (REDUNDANT/STALE/DARK/CONTRADICTION) (`8721caa`)
 
 ---
 
