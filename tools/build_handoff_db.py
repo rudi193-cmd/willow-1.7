@@ -19,12 +19,19 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Directory resolution ─────────────────────────────────────────────────────
+# Each entry in WILLOW_HANDOFF_DIRS is a path.
+# Prefix with '+' to scan recursively (all subdirs included).
+# Example: +/home/user/github/die-namic-system/docs
 
 _dirs_env = os.environ.get("WILLOW_HANDOFF_DIRS", "")
 if _dirs_env:
-    SCAN_DIRS = [Path(p) for p in _dirs_env.split(":") if p.strip()]
+    SCAN_DIRS = []
+    for p in _dirs_env.split(":"):
+        p = p.strip()
+        if p:
+            SCAN_DIRS.append(("recursive", Path(p[1:])) if p.startswith("+") else ("flat", Path(p)))
 else:
-    SCAN_DIRS = [Path(__file__).parent]
+    SCAN_DIRS = [("flat", Path(__file__).parent)]
 
 _db_env = os.environ.get("WILLOW_HANDOFF_DB", "")
 DB_PATH = Path(_db_env) if _db_env else SCAN_DIRS[0] / "handoffs.db"
@@ -151,20 +158,41 @@ def parse_session_handoff(content: str, filename: str = "") -> dict:
 
 # ── Discovery ────────────────────────────────────────────────────────────────
 
-def collect_files(scan_dirs: list[Path]) -> list[Path]:
+def collect_files(scan_dirs: list[tuple[str, Path]]) -> list[Path]:
     """Walk each dir, deduplicate by filename (first dir wins), return sorted list."""
     seen: dict[str, Path] = {}
-    for d in scan_dirs:
+
+    def _visit(d: Path):
         if not d.exists():
-            print(f"  SKIP (not found): {d}")
-            continue
+            return
         for f in sorted(d.iterdir()):
+            if f.is_dir():
+                continue
+            if f.name in _SKIP:
+                continue
+            if f.name not in seen:
+                seen[f.name] = f
+
+    def _visit_recursive(d: Path):
+        if not d.exists():
+            return
+        for f in sorted(d.rglob("*")):
             if not f.is_file():
                 continue
             if f.name in _SKIP:
                 continue
             if f.name not in seen:
                 seen[f.name] = f
+
+    for mode, d in scan_dirs:
+        if not d.exists():
+            print(f"  SKIP (not found): {d}")
+            continue
+        if mode == "recursive":
+            _visit_recursive(d)
+        else:
+            _visit(d)
+
     return sorted(seen.values(), key=lambda f: f.name)
 
 
@@ -251,9 +279,10 @@ def build_db():
 
     print(f"Built {DB_PATH}")
     print(f"  Scanned dirs ({len(SCAN_DIRS)}):")
-    for d in SCAN_DIRS:
+    for mode, d in SCAN_DIRS:
         status = "ok" if d.exists() else "missing"
-        print(f"    [{status}] {d}")
+        flag = "+" if mode == "recursive" else " "
+        print(f"    [{status}]{flag} {d}")
     print(f"  {file_count} files indexed")
     print(f"  {handoff_count} handoffs parsed")
     print(f"  DB size: {DB_PATH.stat().st_size / 1024:.1f} KB")
