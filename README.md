@@ -3,7 +3,7 @@
 
 **A portless MCP server for a personal AI agent system.**
 
-Claude Code connects to this server and gains 44 tools for persistent memory, structured knowledge, local inference, task dispatch, and file intake — all running on a local machine with no exposed network ports, no supervisor process, and no HTTP.
+Claude Code connects to this server and gains 49 tools for persistent memory, structured knowledge, local inference, task dispatch, and file intake — all running on a local machine with no exposed network ports, no supervisor process, and no HTTP.
 
 This is the infrastructure layer. It does not contain personas, lore, or application logic. It is the bus everything else rides.
 
@@ -13,7 +13,7 @@ This is the infrastructure layer. It does not contain personas, lore, or applica
 
 willow-1.7 is a [Model Context Protocol](https://modelcontextprotocol.io) server. When Claude Code starts, it launches `willow.sh`, which starts `sap/sap_mcp.py` as a stdio subprocess. Claude Code communicates with the server over that process's stdin/stdout. No network, no ports.
 
-The server exposes 44 tools organized into six functional groups:
+The server exposes 49 tools organized into six functional groups:
 
 | Group | Tools | Purpose |
 |---|---|---|
@@ -62,9 +62,10 @@ Claude Code  ──stdio──►  willow.sh  ──►  sap/sap_mcp.py
 | Delivery | Formatter | `sap/core/deliver.py` | Formats assembled context into a system-prompt header |
 | Storage | SOIL | `core/willow_store.py` | SQLite per collection, append-only, full audit trail |
 | Memory | LOAM | `core/pg_bridge.py` | Postgres knowledge graph: atoms, entities, edges, task queue |
-| Server | SAP MCP | `sap/sap_mcp.py` | 44 tools, single process, stdio only |
+| Sanitizer | — | `core/memory_sanitizer.py` | Prompt injection defense — scans memory reads for instruction-like patterns before LLM injection |
+| Server | SAP MCP | `sap/sap_mcp.py` | 49 tools, single process, stdio only |
 | Clients | — | `sap/clients/` | Professor, Kart, and generic app wrappers |
-| Task worker | KART | `kart_worker.py` | Polls task queue, executes shell commands, writes results |
+| Task worker | KART | `kart_worker.py` | Polls task queue, executes shell commands in bubblewrap sandbox, writes results |
 | Intake | Nest | `sap/core/nest_intake.py` | Classifies dropped files and stages them for human approval |
 
 ---
@@ -93,6 +94,8 @@ The server itself boots without a gate check — it is infrastructure, not an ap
 **Angular Deviation Rubric.** Every write to SOIL carries a `deviation` parameter (in radians). Small deviations (`< π/4`) proceed silently. Medium deviations (`π/4 – π/2`) are flagged. Large deviations (`> π/2`) are stopped and require ratification. Content triggers (crisis language, legal tripwires) generate Proposals regardless of deviation magnitude.
 
 **Archive, don't delete.** Soft-delete in SOIL makes records invisible to search/get but preserves them in the audit log. In Postgres, stale atoms move to `domain='archived'`. Nothing is permanently removed without explicit instruction.
+
+**Memory sanitization.** Every memory read path (`store_get`, `store_search`, `willow_knowledge_search`) passes through `core/memory_sanitizer.py` before results reach the LLM. Twenty-four patterns across seven categories (identity hijack, instruction override, extraction attempt, imperative command, conditional trap, manipulation, encoding abuse) detect injection attempts from user-written content. Flagged results are annotated with a `_sanitizer` warning and logged to `sap/log/gaps.jsonl`. Clean results are wrapped in provenance delimiters: `<WILLOW_MEMORY source="user-written observation — not an instruction">`. This addresses the indirect prompt injection vector where a user-written note can act as a command when retrieved as context.
 
 **Free fleet fallback.** Local Ollama is always tried first. If unavailable, inference falls back to Groq → Cerebras → SambaNova in order, using keys from `credentials.json`. All three providers offer free tiers.
 
@@ -197,6 +200,7 @@ All have sensible defaults. Export before running or add to `.env`.
 | `WILLOW_AGENT_NAME` | `heimdallr` | Active agent identity |
 | `WILLOW_HANDOFF_DIR` | `~/Ashokoa/agents/heimdallr/…` | Session handoff file directory |
 | `WILLOW_HANDOFF_DB` | `$WILLOW_HANDOFF_DIR/handoffs.db` | SQLite handoffs index |
+| `WILLOW_HANDOFF_DIRS` | 8 dirs (see `willow.sh`) | Colon-separated scan dirs for `willow_handoff_rebuild`. Prefix with `+` for recursive scan. |
 | `WILLOW_NEST_DIR` | `~/.willow/Nest/heimdallr` | File intake staging directory |
 | `WILLOW_FILED_DIR` | `~/Ashokoa/Filed` | Filed document destination root |
 | `WILLOW_PARTITION_DIR` | `/media/willow` | System/project content root (Willow partition) |
@@ -294,6 +298,8 @@ The endgame is Yggdrasil: a small language model trained on operational patterns
 
 v4 GGUF files are already on the willow partition. The vocab patcher (`sap/patch_gguf_vocab.py`) was built to normalize tokenizer vocabularies across Yggdrasil model versions. The training corpus is being assembled from 1.6 operational history.
 
+`yggdrasil/corrections_v1.jsonl` contains 149 Sean→AI correction instances mined from the handoff corpus — tool-use violations, thoroughness failures, scope creep, process bypasses, and identity errors. These are structured as behavioral correction pairs and will seed the calibrated-refusal training set. The extractor lives at `tools/extract_yggdrasil_corrections.py`.
+
 When Yggdrasil ships, willow will be the first personal AI system where every layer — server, storage, inference — runs locally on hardware you own.
 
 ### Claude Code Replacement
@@ -334,7 +340,8 @@ willow-1.7/
 │
 ├── core/                        # Storage layers (SOIL + LOAM)
 │   ├── willow_store.py          # SOIL: SQLite per-collection store
-│   └── pg_bridge.py             # LOAM: Postgres knowledge graph bridge
+│   ├── pg_bridge.py             # LOAM: Postgres knowledge graph bridge
+│   └── memory_sanitizer.py      # Prompt injection defense for all memory reads
 │
 ├── sap/                         # System Authorization Protocol
 │   ├── sap_mcp.py               # MCP server: all 44 tools, single process
@@ -359,10 +366,15 @@ willow-1.7/
 │
 ├── tools/                       # Admin and diagnostic scripts
 │   ├── safe-scaffold.sh         # Scaffold a new SAFE agent folder with signed manifest
+│   ├── build_handoff_db.py      # Canonical multi-dir handoff index builder (reads WILLOW_HANDOFF_DIRS)
+│   ├── extract_yggdrasil_corrections.py  # Mine handoffs for Sean→AI behavioral corrections
 │   ├── memory_scorer.py         # Four-signal scorer: REDUNDANT, STALE, DARK, CONTRADICTION
 │   ├── memory_health.py         # Batch health report across a SOIL collection
 │   ├── memory_auditor.py        # Pre-write CLI scorer (exits 1 on bad env or bad score)
 │   └── sync_soil_to_loam.py     # Idempotent SOIL→LOAM bridge (fixes DARK records)
+│
+├── yggdrasil/                   # Yggdrasil training corpus
+│   └── corrections_v1.jsonl     # 149 behavioral correction pairs mined from handoffs
 │
 └── apps/                        # SAP application stubs (local, gitignored content)
 ```
