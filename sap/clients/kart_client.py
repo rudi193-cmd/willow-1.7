@@ -31,7 +31,7 @@ logger = logging.getLogger("sap.clients.kart")
 
 # Default app_id for Kart tasks that don't specify one.
 # SAFE folder: SAFE/Applications/utety-chat/professors/Kart/
-KART_DEFAULT_APP = "Kart"
+KART_DEFAULT_APP = "kart"
 
 
 def authorize_task(task: dict) -> bool:
@@ -56,7 +56,7 @@ def authorize_task(task: dict) -> bool:
 
     raw_app_id = (
         metadata.get("sap_app_id")
-        or task.get("agent", "").title()
+        or task.get("agent", "").lower()
         or KART_DEFAULT_APP
     )
     app_id = raw_app_id or KART_DEFAULT_APP
@@ -87,7 +87,7 @@ def build_task_context(task: dict, max_chars: int = 2000) -> Optional[str]:
         except Exception:
             metadata = {}
 
-    app_id = metadata.get("sap_app_id") or task.get("agent", "").title() or KART_DEFAULT_APP
+    app_id = metadata.get("sap_app_id") or task.get("agent", "").lower() or KART_DEFAULT_APP
     query = f"{task.get('subject', '')} {task.get('description', '')}".strip()
 
     ctx = assemble(app_id, query=query, max_chars=max_chars)
