@@ -53,8 +53,6 @@ The porch comes down when this ships.
 ## Open Work
 
 - `credentials.json` at repo root — moot. Groq / Cerebras / SambaNova are already live in the fleet.
-- Phase 4 structural: store content-addressed IDs instead of raw paths in DB (`pg_bridge.py`, `nest_intake.py`)
-- Phase 4 structural: containerize `kart_worker` — run task execution in sandbox
 - MegaLens `diff_audit` + `code_intelligence` passes pending (pool back up, $5 credits)
 
 ## Done
@@ -72,6 +70,8 @@ The porch comes down when this ships.
   - HIGH-2/3/7: allowlist gate, domain scoping, schema limit (`9661539`)
   - F-022/F-023: silent write exceptions logged, `agent_create()` transactional (`f85294c`)
 - `tools/sandbox_memory_test.py` — memory auditor (REDUNDANT/STALE/DARK/CONTRADICTION) (`8721caa`)
+- Phase 4 structural: content-addressed IDs — `content_store` table + SHA-256 in `nest_intake`, `content_id` column in `raw_jsonls` (`cd88610`)
+- Phase 4 structural: kart sandbox — `_spawn()` wraps task execution in bubblewrap (--unshare-net/pid, ro-bind, tmpfs), stdin for scripts, host fallback with WARNING (`cd88610`)
 
 ---
 
