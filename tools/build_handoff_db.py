@@ -46,6 +46,8 @@ def classify_file(filename: str) -> str:
         return "overnight"
     if "performance_review" in name:
         return "review"
+    if "handoff" in name and name.endswith(".md"):
+        return "session"
     return "other"
 
 
