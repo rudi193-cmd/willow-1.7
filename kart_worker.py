@@ -66,18 +66,52 @@ def _bwrap_prefix() -> list[str]:
     for path in ("/bin", "/lib", "/lib64", "/lib32", "/sbin"):
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
+    # Ashokoa: writable (handoff files written here)
+    ashokoa = os.path.join(home, "Ashokoa")
+    if os.path.exists(ashokoa):
+        args += ["--bind", ashokoa, ashokoa]
+    # Desktop: writable (handoff copies land here)
+    desktop = os.path.join(home, "Desktop")
+    if os.path.exists(desktop):
+        args += ["--bind", desktop, desktop]
+    # psycopg2: bind package dir + bundled native libs (psycopg2_binary.libs/)
+    try:
+        import psycopg2 as _pg2
+        pg2_dir = os.path.dirname(_pg2.__file__)
+        if os.path.exists(pg2_dir):
+            args += ["--ro-bind", pg2_dir, pg2_dir]
+        libs_dir = os.path.join(os.path.dirname(pg2_dir), "psycopg2_binary.libs")
+        if os.path.exists(libs_dir):
+            args += ["--ro-bind", libs_dir, libs_dir]
+    except ImportError:
+        pass
+    # Bind all user site-packages so psycopg2's .so deps resolve
+    import sysconfig
+    user_site = sysconfig.get_path("purelib")
+    if user_site and os.path.exists(user_site):
+        args += ["--ro-bind", user_site, user_site]
     return args
 
 
 def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
     """
     Spawn cmd sandboxed via bwrap when available, falling back to host execution.
+    cmd_type: 'shell' | 'script' (bash) | 'python'
     Returns a running Popen with stdout/stderr as PIPE.
     """
     global _SANDBOX_WARNED
     if _BWRAP:
         prefix = _bwrap_prefix()
-        if cmd_type == "script":
+        if cmd_type == "python":
+            proc = subprocess.Popen(
+                prefix + ["python3", "-"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env,
+            )
+            proc.stdin.write(cmd)
+            proc.stdin.close()
+        elif cmd_type == "script":
             proc = subprocess.Popen(
                 prefix + ["bash", "-s"],
                 stdin=subprocess.PIPE,
@@ -97,6 +131,25 @@ def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
     if not _SANDBOX_WARNED:
         print("[kart] WARNING: bwrap not found — running unsandboxed", flush=True)
         _SANDBOX_WARNED = True
+
+    if cmd_type == "python":
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", prefix="kart_", delete=False
+        ) as f:
+            f.write(cmd)
+            tmp_path = f.name
+        try:
+            proc = subprocess.Popen(
+                ["python3", tmp_path],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env,
+            )
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return proc
 
     if cmd_type == "script":
         with tempfile.NamedTemporaryFile(
@@ -154,13 +207,16 @@ def execute_task(task_text: str) -> dict:
     errors = []
     commands = []
 
-    # 1. Fenced code blocks — run each block as a single bash script
-    for block in re.findall(r'```(?:bash|sh|python3?)?\n?(.*?)```', task_text, re.DOTALL):
+    # 1. Fenced code blocks — route by language tag
+    for lang, block in re.findall(r'```(bash|sh|python3?|python)?\n?(.*?)```', task_text, re.DOTALL):
         block = block.strip()
         if not block:
             continue
+        is_python = lang in ("python", "python3")
         real_lines = [l for l in block.splitlines() if l.strip() and not l.strip().startswith('#')]
-        if len(real_lines) == 1:
+        if is_python:
+            commands.append(('python', block))
+        elif len(real_lines) == 1:
             commands.append(('shell', real_lines[0]))
         else:
             commands.append(('script', block))
@@ -210,7 +266,7 @@ def execute_task(task_text: str) -> dict:
         label = cmd.splitlines()[0][:80] if cmd_type == 'script' else cmd
         print(f"[kart] >>> {label}", flush=True)
         try:
-            if cmd_type != 'script' and not _validate_shell_cmd(cmd):
+            if cmd_type not in ('script', 'python') and not _validate_shell_cmd(cmd):
                 outputs.append(f"[kart] BLOCKED: command rejected — not in allowed prefix list: {cmd[:80]}")
                 errors.append(f"blocked_command: {cmd[:80]}")
                 continue
