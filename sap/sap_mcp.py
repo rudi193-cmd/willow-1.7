@@ -879,10 +879,25 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             local_stats = store.stats()
             local_count = sum(s["count"] for s in local_stats.values()) if local_stats else 0
             pg_stats = pg.stats() if pg else {}
+            try:
+                from sap.core.gate import SAFE_ROOT, PROFESSOR_ROOT, _verify_pgp
+                _pass, _fail = 0, []
+                for _mp in list(SAFE_ROOT.glob("*/safe-app-manifest.json")) + list(PROFESSOR_ROOT.glob("*/safe-app-manifest.json")):
+                    _ok, _ = _verify_pgp(_mp)
+                    if _ok:
+                        _pass += 1
+                    else:
+                        _fail.append(_mp.parent.name)
+                manifests = {"pass": _pass, "fail": len(_fail)}
+                if _fail:
+                    manifests["failed"] = _fail
+            except Exception as _e:
+                manifests = {"error": str(_e)}
             result = {
                 "local_store": {"collections": len(local_stats), "records": local_count},
                 "postgres": pg_stats if pg_stats else "not_connected",
                 "ollama": _check_ollama(),
+                "manifests": manifests,
                 "mode": "portless",
             }
 

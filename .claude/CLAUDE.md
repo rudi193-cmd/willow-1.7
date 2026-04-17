@@ -34,7 +34,7 @@ The porch comes down when this ships.
 | Server | 49 tools, single process, no HTTP | `sap/sap_mcp.py` |
 | Clients | Professor / Kart / Generic | `sap/clients/` |
 
-**Authorization chain:** `app_id` required on every tool call → SAFE folder exists → manifest present → manifest.sig present → `gpg --verify --status-fd=1` passes + primary key fingerprint matches `WILLOW_PGP_FINGERPRINT`. Any failure → deny + log to `sap/log/gaps.jsonl`. ENGINEER/OPERATOR IDs (`_INFRA_IDS`) bypass PGP. Revocation = delete folder or signature.
+**Authorization chain:** `app_id` required on every tool call → SAFE folder exists → manifest present → manifest.sig present → `gpg --verify --status-fd=1` passes + primary key fingerprint matches `WILLOW_PGP_FINGERPRINT`. Any failure → deny + log to `sap/log/gaps.jsonl`. Infra IDs (`heimdallr`, `hanuman`, `kart`, `willow`, `ada`, `steve`, `shiva`, `ganesha`, `opus`) bypass PGP — use the agent name as `app_id`, not the variable name `_INFRA_IDS`. **Default app_id in this repo: `heimdallr`.** Revocation = delete folder or signature.
 
 **The vision:** SLM on reclaimed sda4, trained on 1.6 operational patterns + Consus math. Yggdrasil waits behind the gate.
 
