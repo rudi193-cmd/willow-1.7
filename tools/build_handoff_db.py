@@ -49,6 +49,8 @@ def classify_file(filename: str) -> str:
         return "session"
     if name.startswith("daily_log") and name.endswith(".md"):
         return "daily_log"
+    if name.startswith("session_log") and name.endswith(".md"):
+        return "daily_log"
     if name.startswith("overnight_stack") and name.endswith(".md"):
         return "overnight"
     if "performance_review" in name:
