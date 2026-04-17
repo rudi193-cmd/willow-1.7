@@ -44,6 +44,20 @@ _ALLOWED_APP_IDS: frozenset[str] = (
 )
 
 
+def _resolve_app_path(root: Path, app_id: str) -> Optional[Path]:
+    """Return the app directory under root, matching app_id case-insensitively."""
+    exact = root / app_id
+    if exact.exists() and exact.is_dir():
+        return exact
+    try:
+        for entry in root.iterdir():
+            if entry.is_dir() and entry.name.lower() == app_id.lower():
+                return entry
+    except (PermissionError, OSError):
+        pass
+    return None
+
+
 def _validate_app_id(app_id: str) -> str:
     """Reject app_id values that could escape SAFE_ROOT via path traversal."""
     if not _APP_ID_RE.match(app_id or ""):
@@ -156,16 +170,9 @@ def authorized(app_id: str) -> bool:
         return False
 
     # Check top-level Applications first, then UTETY/professors/ fallback
-    app_path = SAFE_ROOT / app_id
-    if not app_path.exists():
-        app_path = PROFESSOR_ROOT / app_id
-
-    if not app_path.exists():
-        _log_gap(app_id, f"SAFE folder not found: {app_path}")
-        return False
-
-    if not app_path.is_dir():
-        _log_gap(app_id, f"SAFE path is not a directory: {app_path}")
+    app_path = _resolve_app_path(SAFE_ROOT, app_id) or _resolve_app_path(PROFESSOR_ROOT, app_id)
+    if app_path is None:
+        _log_gap(app_id, f"SAFE folder not found: {PROFESSOR_ROOT / app_id}")
         return False
 
     manifest_path = app_path / "safe-app-manifest.json"

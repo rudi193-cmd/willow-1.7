@@ -54,12 +54,9 @@ def authorize_task(task: dict) -> bool:
         except Exception:
             metadata = {}
 
-    raw_app_id = (
-        metadata.get("sap_app_id")
-        or task.get("agent", "").lower()
-        or KART_DEFAULT_APP
-    )
-    app_id = raw_app_id or KART_DEFAULT_APP
+    # Authorization is Kart's identity, not the submitting agent's.
+    # sap_app_id in metadata allows explicit per-task override.
+    app_id = metadata.get("sap_app_id") or KART_DEFAULT_APP
 
     result = authorized(app_id)
     if not result:
@@ -87,7 +84,7 @@ def build_task_context(task: dict, max_chars: int = 2000) -> Optional[str]:
         except Exception:
             metadata = {}
 
-    app_id = metadata.get("sap_app_id") or task.get("agent", "").lower() or KART_DEFAULT_APP
+    app_id = metadata.get("sap_app_id") or KART_DEFAULT_APP
     query = f"{task.get('subject', '')} {task.get('description', '')}".strip()
 
     ctx = assemble(app_id, query=query, max_chars=max_chars)
