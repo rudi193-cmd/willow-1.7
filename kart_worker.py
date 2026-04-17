@@ -11,7 +11,7 @@ Task queue consumer for willow-1.7. Polls kart_task_queue, claims pending tasks,
 executes them through the SAP gate (PGP-hardened), writes results back.
 
 Authorization: SAP gate v2 — SAFE folder + PGP manifest required.
-Gate app_id: task["agent"].title() or "Ratatosk" fallback.
+Gate app_id: task["agent"].title() or "Kart" fallback (resolves via SAFE/utety-chat/professors/Kart/).
 
 Usage:
     python3 kart_worker.py              # run once (claim + execute one task)
