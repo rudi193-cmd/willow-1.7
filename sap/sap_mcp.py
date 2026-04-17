@@ -37,7 +37,16 @@ _WILLOW_CORE = Path(__file__).parent.parent / "core"
 if str(_WILLOW_CORE) not in sys.path:
     sys.path.insert(0, str(_WILLOW_CORE))
 
-from core.memory_sanitizer import scan_struct, log_flags as _sanitizer_log
+try:
+    from core.memory_sanitizer import scan_struct, log_flags as _sanitizer_log
+except ImportError:
+    import importlib.util as _ilu
+    _ms_path = _SAP_ROOT / "core" / "memory_sanitizer.py"
+    _ms_spec = _ilu.spec_from_file_location("memory_sanitizer", _ms_path)
+    _ms_mod = _ilu.module_from_spec(_ms_spec)
+    _ms_spec.loader.exec_module(_ms_mod)
+    scan_struct = _ms_mod.scan_struct
+    _sanitizer_log = _ms_mod.log_flags
 
 # ── MCP SDK ───────────────────────────────────────────────────────────────────
 try:
