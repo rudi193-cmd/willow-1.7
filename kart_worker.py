@@ -74,6 +74,18 @@ def _bwrap_prefix() -> list[str]:
     desktop = os.path.join(home, "Desktop")
     if os.path.exists(desktop):
         args += ["--bind", desktop, desktop]
+    # github: writable — notebooks and scripts live here
+    github_dir = os.path.join(home, "github")
+    if os.path.exists(github_dir):
+        args += ["--bind", github_dir, github_dir]
+    # ~/.local: kaggle CLI and other user-installed tools
+    local_dir = os.path.join(home, ".local")
+    if os.path.exists(local_dir):
+        args += ["--ro-bind", local_dir, local_dir]
+    # willow venv: bind so venv-installed binaries (jupyter, etc.) are available
+    willow_venv = os.path.join(home, ".willow-venv")
+    if os.path.exists(willow_venv):
+        args += ["--ro-bind", willow_venv, willow_venv]
     # psycopg2: bind package dir + bundled native libs (psycopg2_binary.libs/)
     try:
         import psycopg2 as _pg2
@@ -182,7 +194,9 @@ SHELL_STARTERS = (
     'cp ', 'rsync ', 'python3 ', 'python ',
     'mkdir ', 'chmod ', 'find ', 'grep ', 'curl ', 'echo ',
     'mv ', 'rm ', 'ls ', 'cat ', 'psql ', 'git ', 'bash ',
-    'ollama ',
+    'ollama ', 'jupyter ', 'kaggle ',
+    '/home/sean-campbell/',  # absolute paths under home
+    '/usr/', '/opt/',        # system-installed binaries
 )
 
 
