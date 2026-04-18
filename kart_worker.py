@@ -23,6 +23,7 @@ b17: K17W0
 """
 
 import os
+import resource as _resource
 import shutil as _shutil
 import subprocess
 import sys
@@ -44,16 +45,12 @@ if not _BWRAP:
     )
 
 
-_NET_PREFIXES = (
-    'curl ', 'wget ', 'rsync ', 'kaggle ',
-    'ssh ', 'scp ', 'git clone', 'git fetch', 'git pull', 'git push',
-)
+_ALLOW_NET_DIRECTIVE = "# allow_net"
 
 
-def _needs_network(cmd: str) -> bool:
-    """Return True if cmd requires outbound network access."""
-    lower = cmd.strip().lower()
-    return any(lower.startswith(p) or f'/{p.strip()} ' in lower for p in _NET_PREFIXES)
+def _task_allows_network(task_text: str) -> bool:
+    """Return True only if the task explicitly declares # allow_net on its own line."""
+    return any(line.strip() == _ALLOW_NET_DIRECTIVE for line in task_text.splitlines())
 
 
 def _bwrap_prefix(allow_net: bool = False) -> list[str]:
@@ -127,9 +124,6 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     return args
 
 
-import resource as _resource
-
-
 def _resource_limits():
     """Applied as preexec_fn — bounds CPU time, memory, and open files."""
     _resource.setrlimit(_resource.RLIMIT_CPU, (1800, 1800))      # 30 min CPU
@@ -137,13 +131,14 @@ def _resource_limits():
     _resource.setrlimit(_resource.RLIMIT_NOFILE, (1024, 1024))
 
 
-def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
+def _spawn(cmd_type: str, cmd: str, env: dict, allow_net: bool = False) -> subprocess.Popen:
     """
     Spawn cmd sandboxed via bwrap. bwrap is required — startup raises if missing.
     cmd_type: 'shell' | 'script' (bash) | 'python'
+    allow_net: must be explicitly True — set only when task declares # allow_net.
     Returns a running Popen with stdout/stderr as PIPE.
     """
-    prefix = _bwrap_prefix(allow_net=_needs_network(cmd))
+    prefix = _bwrap_prefix(allow_net=allow_net)
     if cmd_type == "python":
         proc = subprocess.Popen(
             prefix + ["python3", "-"],
@@ -256,6 +251,20 @@ def execute_task(task_text: str) -> dict:
     if not commands:
         return {"success": False, "error": "No executable commands found in task", "steps": 0}
 
+    allow_net = _task_allows_network(task_text)
+    if allow_net:
+        print("[kart] Network access ENABLED (# allow_net directive present)", flush=True)
+
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "HOME": os.path.expanduser("~"),
+        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        "PYTHONUNBUFFERED": "1",
+    }
+    for k, v in os.environ.items():
+        if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_")):
+            env[k] = v
+
     for cmd_type, cmd in commands:
         step += 1
         label = cmd.splitlines()[0][:80] if cmd_type == 'script' else cmd
@@ -266,16 +275,7 @@ def execute_task(task_text: str) -> dict:
                 errors.append(f"blocked_command: {cmd[:80]}")
                 continue
 
-            env = {
-                "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-                "HOME": os.path.expanduser("~"),
-                "LANG": os.environ.get("LANG", "en_US.UTF-8"),
-                "PYTHONUNBUFFERED": "1",
-            }
-            for k, v in os.environ.items():
-                if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_")):
-                    env[k] = v
-            proc = _spawn(cmd_type, cmd, env)
+            proc = _spawn(cmd_type, cmd, env, allow_net=allow_net)
 
             stdout_lines = []
             stderr_lines = []
