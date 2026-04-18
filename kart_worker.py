@@ -41,7 +41,19 @@ _BWRAP: str | None = _shutil.which("bwrap")
 _SANDBOX_WARNED = False
 
 
-def _bwrap_prefix() -> list[str]:
+_NET_PREFIXES = (
+    'curl ', 'wget ', 'rsync ', 'kaggle ',
+    'ssh ', 'scp ', 'git clone', 'git fetch', 'git pull', 'git push',
+)
+
+
+def _needs_network(cmd: str) -> bool:
+    """Return True if cmd requires outbound network access."""
+    lower = cmd.strip().lower()
+    return any(lower.startswith(p) or f'/{p.strip()} ' in lower for p in _NET_PREFIXES)
+
+
+def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     """Build bwrap argument list for sandboxed task execution."""
     home = os.path.expanduser("~")
     willow = str(WILLOW_ROOT)
@@ -52,11 +64,12 @@ def _bwrap_prefix() -> list[str]:
         "--dev", "/dev",
         "--proc", "/proc",
         "--tmpfs", "/tmp",
-        "--unshare-net",
         "--unshare-pid",
         "--die-with-parent",
         "--bind", willow, willow,
     ]
+    if not allow_net:
+        args.insert(1, "--unshare-net")
     willow_store = os.path.join(home, ".willow")
     if os.path.exists(willow_store):
         args += ["--bind", willow_store, willow_store]
@@ -82,6 +95,13 @@ def _bwrap_prefix() -> list[str]:
     local_dir = os.path.join(home, ".local")
     if os.path.exists(local_dir):
         args += ["--ro-bind", local_dir, local_dir]
+    # ~/.kaggle: API credentials for kaggle CLI
+    kaggle_dir = os.path.join(home, ".kaggle")
+    if os.path.exists(kaggle_dir):
+        args += ["--ro-bind", kaggle_dir, kaggle_dir]
+    # /media/willow: model storage (writable — GGUFs land here)
+    if os.path.exists("/media/willow"):
+        args += ["--bind", "/media/willow", "/media/willow"]
     # willow venv: bind so venv-installed binaries (jupyter, etc.) are available
     willow_venv = os.path.join(home, ".willow-venv")
     if os.path.exists(willow_venv):
@@ -113,7 +133,7 @@ def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
     """
     global _SANDBOX_WARNED
     if _BWRAP:
-        prefix = _bwrap_prefix()
+        prefix = _bwrap_prefix(allow_net=_needs_network(cmd))
         if cmd_type == "python":
             proc = subprocess.Popen(
                 prefix + ["python3", "-"],
