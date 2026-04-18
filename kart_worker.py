@@ -26,7 +26,6 @@ import os
 import shutil as _shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -38,7 +37,11 @@ from core.pg_bridge import try_connect
 
 
 _BWRAP: str | None = _shutil.which("bwrap")
-_SANDBOX_WARNED = False
+if not _BWRAP:
+    raise RuntimeError(
+        "[kart] bwrap not found — install bubblewrap. "
+        "Unsandboxed execution is not permitted."
+    )
 
 
 _NET_PREFIXES = (
@@ -79,14 +82,13 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     for path in ("/bin", "/lib", "/lib64", "/lib32", "/sbin"):
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
-    # Ashokoa: writable (handoff files written here)
+    # Ashokoa/Desktop: read-only inside sandbox — host writes these, sandbox reads
     ashokoa = os.path.join(home, "Ashokoa")
     if os.path.exists(ashokoa):
-        args += ["--bind", ashokoa, ashokoa]
-    # Desktop: writable (handoff copies land here)
+        args += ["--ro-bind", ashokoa, ashokoa]
     desktop = os.path.join(home, "Desktop")
     if os.path.exists(desktop):
-        args += ["--bind", desktop, desktop]
+        args += ["--ro-bind", desktop, desktop]
     # github: writable — notebooks and scripts live here
     github_dir = os.path.join(home, "github")
     if os.path.exists(github_dir):
@@ -125,89 +127,48 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     return args
 
 
+import resource as _resource
+
+
+def _resource_limits():
+    """Applied as preexec_fn — bounds CPU time, memory, and open files."""
+    _resource.setrlimit(_resource.RLIMIT_CPU, (1800, 1800))      # 30 min CPU
+    _resource.setrlimit(_resource.RLIMIT_AS,  (8 * 1024 ** 3, 8 * 1024 ** 3))  # 8 GB
+    _resource.setrlimit(_resource.RLIMIT_NOFILE, (1024, 1024))
+
+
 def _spawn(cmd_type: str, cmd: str, env: dict) -> subprocess.Popen:
     """
-    Spawn cmd sandboxed via bwrap when available, falling back to host execution.
+    Spawn cmd sandboxed via bwrap. bwrap is required — startup raises if missing.
     cmd_type: 'shell' | 'script' (bash) | 'python'
     Returns a running Popen with stdout/stderr as PIPE.
     """
-    global _SANDBOX_WARNED
-    if _BWRAP:
-        prefix = _bwrap_prefix(allow_net=_needs_network(cmd))
-        if cmd_type == "python":
-            proc = subprocess.Popen(
-                prefix + ["python3", "-"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, env=env,
-            )
-            proc.stdin.write(cmd)
-            proc.stdin.close()
-        elif cmd_type == "script":
-            proc = subprocess.Popen(
-                prefix + ["bash", "-s"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, env=env,
-            )
-            proc.stdin.write(cmd)
-            proc.stdin.close()
-        else:
-            proc = subprocess.Popen(
-                prefix + ["bash", "-c", cmd],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, env=env,
-            )
-        return proc
-
-    if not _SANDBOX_WARNED:
-        print("[kart] WARNING: bwrap not found — running unsandboxed", flush=True)
-        _SANDBOX_WARNED = True
-
+    prefix = _bwrap_prefix(allow_net=_needs_network(cmd))
     if cmd_type == "python":
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", prefix="kart_", delete=False
-        ) as f:
-            f.write(cmd)
-            tmp_path = f.name
-        try:
-            proc = subprocess.Popen(
-                ["python3", tmp_path],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, env=env,
-            )
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-        return proc
-
-    if cmd_type == "script":
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".sh", prefix="kart_", delete=False
-        ) as f:
-            f.write(cmd)
-            tmp_path = f.name
-        try:
-            os.chmod(tmp_path, 0o755)
-            proc = subprocess.Popen(
-                ["bash", "--", tmp_path],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, env=env,
-            )
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-        return proc
-
-    return subprocess.Popen(
-        cmd, shell=True,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, env=env,
-    )
+        proc = subprocess.Popen(
+            prefix + ["python3", "-"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env=env, preexec_fn=_resource_limits,
+        )
+        proc.stdin.write(cmd)
+        proc.stdin.close()
+    elif cmd_type == "script":
+        proc = subprocess.Popen(
+            prefix + ["bash", "-s"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env=env, preexec_fn=_resource_limits,
+        )
+        proc.stdin.write(cmd)
+        proc.stdin.close()
+    else:
+        proc = subprocess.Popen(
+            prefix + ["bash", "-c", cmd],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, env=env, preexec_fn=_resource_limits,
+        )
+    return proc
 
 
 SHELL_STARTERS = (
@@ -305,8 +266,15 @@ def execute_task(task_text: str) -> dict:
                 errors.append(f"blocked_command: {cmd[:80]}")
                 continue
 
-            env = os.environ.copy()
-            env["PYTHONUNBUFFERED"] = "1"
+            env = {
+                "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+                "HOME": os.path.expanduser("~"),
+                "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+                "PYTHONUNBUFFERED": "1",
+            }
+            for k, v in os.environ.items():
+                if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_")):
+                    env[k] = v
             proc = _spawn(cmd_type, cmd, env)
 
             stdout_lines = []

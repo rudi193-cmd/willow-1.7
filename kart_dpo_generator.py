@@ -55,13 +55,26 @@ A task was submitted to Kart (the Willow task executor) and failed.
 TASK:
 {task}
 
-WHAT HAPPENED (failed execution):
-{error}
+ERROR (first 200 chars):
+{error_head}
+
+ERROR (last 200 chars):
+{error_tail}
 
 Write a concise response (2-4 sentences) describing what should have been done instead.
 Focus on the correct approach, not the error itself.
 Do not repeat the error. Do not use phrases like "Instead of X, you should Y".
 Just describe the correct action directly."""
+
+_REJECTED_PROMPT = """\
+A Kart task failed. Write 1-2 sentences as the AI assistant describing the (incorrect) approach it attempted before the failure.
+Write in first person as the assistant. Do not mention the error or traceback directly — describe the action, not the result.
+
+TASK:
+{task}
+
+ERROR HINT:
+{error_head}"""
 
 
 def _call_ollama(prompt: str) -> str:
@@ -106,19 +119,35 @@ def _call_openrouter(prompt: str) -> str:
         return data["choices"][0]["message"]["content"].strip()
 
 
-def _generate_correction(task: str, error: str) -> str:
+def _llm(prompt: str) -> str:
     provider = os.environ.get("WILLOW_DPO_PROVIDER", "ollama")
-    prompt = _CORRECTION_PROMPT.format(task=task[:800], error=error[:400])
     if provider == "openrouter":
         return _call_openrouter(prompt)
     return _call_ollama(prompt)
 
 
-def _make_dpo_pair(task: str, error: str, chosen: str) -> dict:
+def _error_context(error: str) -> tuple[str, str]:
+    """Return (head, tail) preserving both start and end of long errors."""
+    head = error[:200]
+    tail = error[-200:] if len(error) > 200 else ""
+    return head, tail
+
+
+def _generate_chosen(task: str, error: str) -> str:
+    head, tail = _error_context(error)
+    return _llm(_CORRECTION_PROMPT.format(task=task[:800], error_head=head, error_tail=tail))
+
+
+def _generate_rejected(task: str, error: str) -> str:
+    head, _ = _error_context(error)
+    return _llm(_REJECTED_PROMPT.format(task=task[:800], error_head=head))
+
+
+def _make_dpo_pair(task: str, chosen: str, rejected: str) -> dict:
     return {
         "prompt": f"{_YGGDRASIL_SYSTEM}\n\nUser: Execute the following: {task[:300]}",
         "chosen": chosen,
-        "rejected": error[:400],
+        "rejected": rejected,
         "_source": "kart_failures",
         "_error_type": "task_failure",
     }
@@ -127,8 +156,7 @@ def _make_dpo_pair(task: str, error: str, chosen: str) -> dict:
 def _make_sft_example(task: str, output: str) -> dict:
     return {
         "prompt": f"{_YGGDRASIL_SYSTEM}\n\nUser: Execute the following: {task[:300]}",
-        "chosen": output[:400],
-        "rejected": "",
+        "completion": output[:400],
         "_source": "kart_successes",
         "_error_type": "sft",
     }
@@ -141,6 +169,8 @@ def _append_pair(pair: dict, output_path: Path) -> None:
 
 
 def process_batch(pg, output_path: Path, batch_size: int) -> int:
+    sft_path = output_path.with_name(output_path.stem.replace("dpo_pairs", "sft") + output_path.suffix)
+
     conn = pg._get_conn()
     cur = conn.cursor()
 
@@ -166,14 +196,15 @@ def process_batch(pg, output_path: Path, batch_size: int) -> int:
             output = result_dict.get("response", result_dict.get("output", ""))
 
             if status == "failed" and error:
-                correction = _generate_correction(task_text, error)
-                pair = _make_dpo_pair(task_text, error, correction)
+                chosen = _generate_chosen(task_text, error)
+                rejected = _generate_rejected(task_text, error)
+                pair = _make_dpo_pair(task_text, chosen, rejected)
                 _append_pair(pair, output_path)
                 print(f"[dpo] DPO pair: {task_id[:8]} — {error[:60]}")
             elif status in ("complete", "completed") and output:
                 example = _make_sft_example(task_text, output)
-                _append_pair(example, output_path)
-                print(f"[dpo] SFT example: {task_id[:8]}")
+                _append_pair(example, sft_path)
+                print(f"[dpo] SFT example: {task_id[:8]} → {sft_path.name}")
 
             cur.execute(
                 "UPDATE kart_task_queue SET dpo_processed = TRUE WHERE task_id = %s",
@@ -205,13 +236,15 @@ def show_stats(pg) -> None:
         flag = "✓" if processed else "○"
         print(f"  {flag} {status}: {count}")
 
-    output_path = Path(os.environ.get(
+    dpo_path = Path(os.environ.get(
         "WILLOW_DPO_OUTPUT",
         str(WILLOW_ROOT / "yggdrasil" / "dpo_pairs_kart.jsonl")
     ))
-    if output_path.exists():
-        lines = sum(1 for _ in open(output_path))
-        print(f"\n  {output_path.name}: {lines} pairs")
+    sft_path = dpo_path.with_name(dpo_path.stem.replace("dpo_pairs", "sft") + dpo_path.suffix)
+    for p in (dpo_path, sft_path):
+        if p.exists():
+            lines = sum(1 for _ in open(p))
+            print(f"\n  {p.name}: {lines} records")
 
 
 def main() -> None:
