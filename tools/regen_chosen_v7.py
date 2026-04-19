@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 
 WILLOW_ROOT = Path(__file__).parent.parent.resolve()
@@ -120,6 +121,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="No LLM calls — show stats only")
     parser.add_argument("--limit", type=int, default=0, help="Process at most N pairs")
+    parser.add_argument("--delay", type=float, default=0.0, help="Seconds between LLM calls (default 0)")
+    parser.add_argument("--shard", type=str, default="", help="N/M — process shard N of M (e.g. 1/2)")
     args = parser.parse_args()
 
     print(f"── Yggdrasil v7 Chosen Regeneration  b17:V7RG1 ──")
@@ -136,6 +139,14 @@ def main():
 
     pending = [p for p in pairs if _prompt_hash(p["prompt"]) not in done]
     print(f"Pending: {len(pending)}")
+
+    if args.shard:
+        n, m = [int(x) for x in args.shard.split("/")]
+        chunk = len(pending) // m
+        start = (n - 1) * chunk
+        end   = start + chunk if n < m else len(pending)
+        pending = pending[start:end]
+        print(f"Shard {n}/{m}: pairs {start}-{end} ({len(pending)} pairs)")
 
     if args.limit:
         pending = pending[: args.limit]
@@ -171,6 +182,8 @@ def main():
                 print(f"[{i}/{len(pending)}] {ph} — done  ({pair.get('_src_file', '')})")
             except Exception as e:
                 print(f"[{i}/{len(pending)}] {ph} — ERROR: {e}", file=sys.stderr)
+            if args.delay > 0 and i < len(pending):
+                time.sleep(args.delay)
 
     print(f"\nDone. Checkpoint: {CHECKPOINT}")
 

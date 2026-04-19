@@ -25,13 +25,23 @@ import urllib.request
 _PROVIDERS = {
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
-        "default_model": "llama-3.3-70b-versatile",
+        "default_model": "llama-3.1-70b-versatile",
         "key_env": "GROQ_API_KEY",
     },
     "sambanova": {
         "base_url": "https://api.sambanova.ai/v1",
         "default_model": "Meta-Llama-3.3-70B-Instruct",
         "key_env": "SAMBANOVA_API_KEY",
+    },
+    "cerebras": {
+        "base_url": "https://api.cerebras.ai/v1",
+        "default_model": "llama-3.3-70b",
+        "key_env": "CEREBRAS_API_KEY",
+    },
+    "novita": {
+        "base_url": "https://api.novita.ai/v3/openai",
+        "default_model": "meta-llama/llama-3.3-70b-instruct",
+        "key_env": "NOVITA_API_KEY",
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",

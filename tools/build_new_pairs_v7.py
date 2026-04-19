@@ -22,7 +22,9 @@ b17: V7NP1
 
 import argparse
 import json
+import os
 import sys
+import time
 from pathlib import Path
 
 WILLOW_ROOT = Path(__file__).parent.parent.resolve()
@@ -320,6 +322,9 @@ def _gen_rejected(instruction: str) -> str:
     return call_llm(prompt, temperature=0.4, max_tokens=200)
 
 
+_CALL_DELAY = float(os.environ.get("WILLOW_V7_DELAY", "1.5"))
+
+
 def build_source_a(dry_run: bool) -> list[dict]:
     """slm_refusal.jsonl → DPO pairs."""
     pairs = []
@@ -342,6 +347,7 @@ def build_source_a(dry_run: bool) -> list[dict]:
             rejected = "[dry-run]"
         else:
             rejected = _gen_rejected(instruction)
+            time.sleep(_CALL_DELAY)
         pairs.append({
             "prompt": _make_prompt(instruction),
             "chosen": chosen,
@@ -360,6 +366,7 @@ def build_source_b(dry_run: bool) -> list[dict]:
             rejected = "[dry-run]"
         else:
             rejected = _gen_rejected(instruction)
+            time.sleep(_CALL_DELAY)
         pairs.append({
             "prompt": _make_prompt(instruction),
             "chosen": chosen,
