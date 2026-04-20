@@ -79,6 +79,12 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     for path in ("/bin", "/lib", "/lib64", "/lib32", "/sbin"):
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
+    # agents/: hanuman/bin scripts live here — bind so Kart can run them
+    # Note: /tmp bind exists but may not be reliable if systemd PrivateTmp isolates
+    # the parent session's /tmp. Use agents/hanuman/bin/ or fenced code blocks instead.
+    agents_dir = os.path.join(home, "agents")
+    if os.path.exists(agents_dir):
+        args += ["--bind", agents_dir, agents_dir]
     # Ashokoa/Desktop: read-only inside sandbox — host writes these, sandbox reads
     ashokoa = os.path.join(home, "Ashokoa")
     if os.path.exists(ashokoa):
@@ -263,8 +269,22 @@ def execute_task(task_text: str) -> dict:
         "PYTHONUNBUFFERED": "1",
     }
     for k, v in os.environ.items():
-        if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_")):
+        if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_", "GIT_")):
             env[k] = v
+    # Inject git identity from global config if not already in env
+    if "GIT_AUTHOR_NAME" not in env:
+        try:
+            import subprocess as _sp
+            name = _sp.check_output(["git", "config", "--global", "user.name"], text=True).strip()
+            email = _sp.check_output(["git", "config", "--global", "user.email"], text=True).strip()
+            if name:
+                env["GIT_AUTHOR_NAME"] = name
+                env["GIT_COMMITTER_NAME"] = name
+            if email:
+                env["GIT_AUTHOR_EMAIL"] = email
+                env["GIT_COMMITTER_EMAIL"] = email
+        except Exception:
+            pass
 
     for cmd_type, cmd in commands:
         step += 1
