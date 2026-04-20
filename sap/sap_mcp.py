@@ -873,6 +873,18 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 {"name": "jane",       "trust": "WORKER",    "role": "Research, documentation"},
                 {"name": "ofshield",   "trust": "WORKER",    "role": "Keeper of the Gate"},
             ]
+            # Merge locally registered agents from ~/.willow/agents.json
+            try:
+                import json as _json
+                from pathlib import Path as _Path
+                _override = _Path.home() / ".willow" / "agents.json"
+                if _override.exists():
+                    _existing_names = {a["name"] for a in agents}
+                    for _entry in _json.loads(_override.read_text()):
+                        if _entry.get("name") and _entry["name"] not in _existing_names:
+                            agents.append(_entry)
+            except Exception:
+                pass
             result = {"agents": agents, "count": len(agents)}
 
         elif name in ("willow_status", "willow_system_status"):
