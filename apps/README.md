@@ -3,7 +3,16 @@
 
 This directory is reserved for SAP application code that is co-located with the server but separate from the infrastructure.
 
-It is currently empty.
+## Dashboard
+
+The Willow terminal dashboard (Heimdallr TUI) has moved to its own repository:
+
+**[rudi193-cmd/willow-dashboard](https://github.com/rudi193-cmd/willow-dashboard)**
+
+```bash
+git clone https://github.com/rudi193-cmd/willow-dashboard
+python3 willow-dashboard/dashboard.py
+```
 
 ---
 
