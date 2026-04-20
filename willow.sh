@@ -27,7 +27,7 @@ export WILLOW_PYTHON
 # ── Environment (override via env or .env file) ───────────────────────────────
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
-export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-/media/willow/SAFE/Applications}"
+export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
 export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 
 # ── Agent identity — sets identity for the MCP server process ────────────────
@@ -77,7 +77,7 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
 
     verify)
         echo "Willow 1.7 — manifest signature verification"
-        SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE_backup/Applications}"
+        SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
         if [[ ! -d "$SAFE_ROOT" ]]; then
             echo "  SAFE root not found: $SAFE_ROOT"
             exit 1
