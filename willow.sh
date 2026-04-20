@@ -77,7 +77,7 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
 
     verify)
         echo "Willow 1.7 — manifest signature verification"
-        SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE_backup/Applications}"
+        SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
         if [[ ! -d "$SAFE_ROOT" ]]; then
             echo "  SAFE root not found: $SAFE_ROOT"
             exit 1
