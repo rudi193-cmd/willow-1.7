@@ -70,6 +70,14 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     ]
     if not allow_net:
         args.insert(1, "--unshare-net")
+    else:
+        # Network-enabled tasks need git and PyPI credentials
+        ssh_dir = os.path.join(home, ".ssh")
+        if os.path.exists(ssh_dir):
+            args += ["--ro-bind", ssh_dir, ssh_dir]
+        netrc = os.path.join(home, ".netrc")
+        if os.path.exists(netrc):
+            args += ["--ro-bind", netrc, netrc]
     willow_store = os.path.join(home, ".willow")
     if os.path.exists(willow_store):
         args += ["--bind", willow_store, willow_store]
@@ -269,8 +277,12 @@ def execute_task(task_text: str) -> dict:
         "PYTHONUNBUFFERED": "1",
     }
     for k, v in os.environ.items():
-        if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_", "GIT_")):
+        if k.startswith(("WILLOW_", "POSTGRES", "PG", "OLLAMA_", "GIT_", "TWINE_", "PYPI_")):
             env[k] = v
+    # Add willow-venv/bin to PATH so twine, jupyter, etc. are reachable
+    venv_bin = os.path.join(os.path.expanduser("~"), ".willow-venv", "bin")
+    if os.path.exists(venv_bin) and venv_bin not in env["PATH"]:
+        env["PATH"] = venv_bin + ":" + env["PATH"]
     # Inject git identity from global config if not already in env
     if "GIT_AUTHOR_NAME" not in env:
         try:
