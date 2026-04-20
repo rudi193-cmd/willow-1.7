@@ -20,3 +20,9 @@ store/
 
 # MCP config (may contain bearer tokens)
 .mcp.json
+
+# External repos — belong in ~/github/, not here
+hermes-agent/
+
+# Superpowers ephemeral session files
+.superpowers/
