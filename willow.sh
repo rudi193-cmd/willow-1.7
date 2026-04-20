@@ -30,7 +30,8 @@ export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json
 export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
 export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 
-# ── Agent identity — this project is Heimdallr, not Hanuman ──────────────────
+# ── Agent identity — sets identity for the MCP server process ────────────────
+# Claude Code process identity is set in .claude/settings.json, not here.
 export WILLOW_AGENT_NAME="heimdallr"
 export WILLOW_HANDOFF_DIR="${HOME}/Ashokoa/agents/heimdallr/index/haumana_handoffs"
 export WILLOW_HANDOFF_DB="${WILLOW_HANDOFF_DIR}/handoffs.db"

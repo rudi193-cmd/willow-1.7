@@ -1,4 +1,7 @@
 {
+  "env": {
+    "WILLOW_AGENT_NAME": "heimdallr"
+  },
   "permissions": {
     "allow": []
   }
