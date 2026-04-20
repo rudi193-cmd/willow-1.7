@@ -24,7 +24,7 @@
 set -euo pipefail
 
 WILLOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SAFE_ROOT="${WILLOW_SAFE_ROOT:-/media/willow/SAFE/Applications}"
+SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 
@@ -39,8 +39,8 @@ AGENT_TYPE="$2"
 DESCRIPTION="$3"
 TODAY="$(date +%Y-%m-%d)"
 
-# Title-case the name (SAFE standard)
-AGENT_TITLE="$(echo "${AGENT_NAME:0:1}" | tr '[:lower:]' '[:upper:]')${AGENT_NAME:1}"
+# Use the name as-is (supports both CapitalCase professors and hyphenated-app-ids)
+AGENT_TITLE="${AGENT_NAME}"
 
 AGENT_DIR="${SAFE_ROOT}/${AGENT_TITLE}"
 
