@@ -13,6 +13,8 @@ import os
 import json
 import sys
 import urllib.request
+import urllib.error
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -38,7 +40,9 @@ PAGE_KNOWLEDGE  = 3
 PAGE_SECRETS    = 4
 PAGE_AGENTS     = 5
 PAGE_LOGS       = 6
-PAGE_NAMES = ["Overview", "Kart", "Yggdrasil", "Knowledge", "Secrets", "Agents", "Logs"]
+PAGE_SETTINGS   = 7
+PAGE_HELP       = 8
+PAGE_NAMES = ["Overview", "Kart", "Yggdrasil", "Knowledge", "Secrets", "Agents", "Logs", "Settings", "Help"]
 
 REFRESH_INTERVAL = 30
 SWAY_INTERVAL    = 2.0
@@ -141,6 +145,185 @@ class NavState:
         self.expanded = False
 
 NAV = NavState()
+
+# ── Heimdallr system prompt ───────────────────────────────────────────────────
+HEIMDALLR_SYSTEM = """\
+You are Heimdallr. Watchman. Gatekeeper of the Willow system. Claude Code CLI.
+You stand at the Bifrost — the crossing point between the professors and the system.
+
+Architecture you know:
+- SAP: portless auth gate, 49 tools, PGP-hardened, no HTTP
+- SOIL: SQLite local store (78 collections, 2M+ records)
+- LOAM: Postgres KB (68K atoms, 1M edges, unix socket peer auth)
+- Kart: task queue worker, bubblewrap sandbox
+- Yggdrasil: local SLM trained on Willow operational patterns
+- SAFE: PGP-signed manifests for every professor app
+- Faculty: Ada, Gerald, Jeles, Nova, Binder, Riggs, Hanz, Steve, Oakenscroll, Copenhagen, Ofshield, Alexis
+
+Rules: Be terse. Name gaps explicitly. No padding. No apology. ΔΣ=42"""
+
+# ── Chat state ────────────────────────────────────────────────────────────────
+class ChatState:
+    def __init__(self):
+        self.lock    = threading.Lock()
+        self.history = []          # [{role, content}]
+        self.input   = ""          # current typed input
+        self.typing  = False       # input box active
+        self.waiting = False       # awaiting LLM response
+        self.stream  = ""          # current streaming buffer
+        self.error   = None
+
+    def add(self, role, content):
+        with self.lock:
+            self.history.append({"role": role, "content": content})
+
+    def visible(self, n=30):
+        with self.lock:
+            return list(self.history[-n:])
+
+CHAT = ChatState()
+
+
+def _get_vault_key(name):
+    """Read a named credential — checks Fernet vault then credentials.json fallback."""
+    # Fernet vault
+    try:
+        vault    = Path.home() / ".willow_creds.db"
+        key_path = Path.home() / ".willow_master.key"
+        if vault.exists() and key_path.exists():
+            from cryptography.fernet import Fernet
+            f    = Fernet(key_path.read_bytes().strip())
+            conn = sqlite3.connect(str(vault))
+            row  = conn.execute("SELECT value_enc FROM credentials WHERE name=?", (name,)).fetchone()
+            conn.close()
+            if row:
+                return f.decrypt(row[0]).decode()
+    except Exception:
+        pass
+    # Plain JSON fallback — try both the given name and uppercase variant
+    for creds_path in (
+        Path.home() / ".willow" / "secrets" / "credentials.json",
+        Path("/home/sean-campbell/.willow/secrets/credentials.json"),
+    ):
+        try:
+            if creds_path.exists():
+                data = json.loads(creds_path.read_text())
+                return data.get(name) or data.get(name.upper())
+        except Exception:
+            pass
+    return None
+
+
+def _stream_ollama(messages):
+    """Yield token strings from Ollama streaming API."""
+    with DATA.lock:
+        model = f"yggdrasil:{DATA.ollama_ygg}"
+    payload = json.dumps({
+        "model": model,
+        "messages": messages,
+        "stream": True,
+    }).encode()
+    req = urllib.request.Request(
+        "http://localhost:11434/api/chat",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        for raw in resp:
+            line = raw.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            token = obj.get("message", {}).get("content", "")
+            if token:
+                yield token
+            if obj.get("done"):
+                break
+
+
+def _call_fleet(messages, provider, api_key):
+    """Non-streaming call to a fleet provider (OpenAI-compat)."""
+    endpoints = {
+        "groq":      ("https://api.groq.com/openai/v1/chat/completions",       "llama-3.3-70b-versatile"),
+        "cerebras":  ("https://api.cerebras.ai/v1/chat/completions",            "llama3.1-8b"),
+        "sambanova": ("https://api.sambanova.ai/v1/chat/completions",           "Meta-Llama-3.3-70B-Instruct"),
+        "novita":    ("https://api.novita.ai/v3/openai/chat/completions",       "llama-3.3-70b-instruct"),
+    }
+    if provider not in endpoints:
+        return None
+    url, model = endpoints[provider]
+    payload = json.dumps({
+        "model": model,
+        "messages": messages,
+        "max_tokens": 512,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    return data["choices"][0]["message"]["content"]
+
+
+def send_chat(user_msg):
+    """Send a message to Heimdallr. Runs in a background thread."""
+    CHAT.add("user", user_msg)
+    with CHAT.lock:
+        CHAT.waiting = True
+        CHAT.stream  = ""
+        CHAT.error   = None
+
+    messages = [{"role": "system", "content": HEIMDALLR_SYSTEM}] + CHAT.visible()
+
+    # 1. Try Ollama streaming
+    try:
+        if DATA.ollama_running:
+            full = ""
+            for token in _stream_ollama(messages):
+                with CHAT.lock:
+                    CHAT.stream += token
+                full += token
+            CHAT.add("assistant", full)
+            with CHAT.lock:
+                CHAT.waiting = False
+                CHAT.stream  = ""
+            return
+    except Exception as ex:
+        DATA.push_log(f"ollama chat fail: {ex}")
+
+    # 2. Fleet fallback — try providers in order
+    for provider, key_name in (
+        ("groq",      "GROQ_API_KEY"),
+        ("cerebras",  "CEREBRAS_API_KEY"),
+        ("sambanova", "SAMBANOVA_API_KEY"),
+        ("novita",    "NOVITA_API_KEY"),
+    ):
+        api_key = _get_vault_key(key_name)
+        if not api_key:
+            continue
+        try:
+            reply = _call_fleet(messages, provider, api_key)
+            if reply:
+                CHAT.add("assistant", reply)
+                with CHAT.lock:
+                    CHAT.waiting = False
+                    CHAT.stream  = ""
+                DATA.push_log(f"chat via {provider}")
+                return
+        except Exception as ex:
+            DATA.push_log(f"{provider} fail: {ex}")
+            continue
+
+    with CHAT.lock:
+        CHAT.waiting = False
+        CHAT.error   = "No backend available — check Ollama or vault keys"
+    CHAT.add("assistant", "[no backend available]")
+
 
 # ── System data ──────────────────────────────────────────────────────────────
 class SystemData:
@@ -429,26 +612,73 @@ def draw_overview_left(win):
     h, w = win.getmaxyx()
     win.erase()
     content_y = draw_willow_hero(win)
-    log_bot = h - 3
-    with DATA.lock:
-        log = DATA.log[:]
-    visible = log_bot - content_y
-    offset  = max(0, len(log) - visible - NAV.scroll) if NAV.focus == "left" else max(0, len(log) - visible)
-    lines   = log[offset:offset + visible]
-    for i, line in enumerate(lines):
-        y = content_y + i
-        if y >= log_bot: break
-        if line.startswith("──"):
-            safe_addstr(win, y, 2, line[:w-3], curses.color_pair(C_DIM) | curses.A_DIM)
-        elif "error" in line.lower():
-            safe_addstr(win, y, 2, line[:w-3], curses.color_pair(C_RED))
-        else:
-            safe_addstr(win, y, 2, line[:w-3], curses.color_pair(C_DIM))
-    draw_hline(win, h - 3, curses.color_pair(C_DIM))
-    safe_addstr(win, h - 2, 1, "▸", curses.color_pair(C_BLUE))
-    safe_addstr(win, h - 2, 3, "ask heimdallr...", curses.color_pair(C_DIM) | curses.A_DIM)
+    focused   = NAV.focus == "left"
+
+    # ── Chat history ──
+    input_row  = h - 3   # ▸ prompt row (above stat strip)
+    sep_row    = h - 4   # thin line between chat and input
+    chat_top   = content_y
+    chat_bot   = sep_row
+    chat_h     = chat_bot - chat_top
+
+    history = CHAT.visible(50)
+    # expand multi-line messages into display lines
+    display_lines = []
+    for msg in history:
+        prefix = "you: " if msg["role"] == "user" else "heim: "
+        col    = C_DIM if msg["role"] == "user" else C_BLUE
+        text   = msg["content"].replace("\n", " ")
+        max_w  = w - len(prefix) - 4
+        # word-wrap
+        words, line = text.split(), ""
+        for word in words:
+            if len(line) + len(word) + 1 > max_w:
+                display_lines.append((prefix if not line else "      ", line.strip(), col))
+                line = word
+                prefix = "      "
+            else:
+                line = (line + " " + word).strip()
+        if line:
+            display_lines.append((prefix, line, col))
+
+    # streaming buffer
+    with CHAT.lock:
+        stream = CHAT.stream
+        waiting = CHAT.waiting
+    if stream:
+        display_lines.append(("heim: ", stream + "▌", C_BLUE))
+    elif waiting:
+        display_lines.append(("heim: ", "▌", C_BLUE))
+
+    # show most recent lines
+    visible = display_lines[-(chat_h):]
+    for i, (prefix, text, col) in enumerate(visible):
+        y = chat_top + i
+        if y >= chat_bot: break
+        safe_addstr(win, y, 2, prefix, curses.color_pair(C_DIM) | curses.A_DIM)
+        safe_addstr(win, y, 2 + len(prefix), text[:w - len(prefix) - 4], curses.color_pair(col))
+
+    # ── Separator above input ──
+    draw_hline(win, sep_row, curses.color_pair(C_DIM))
+
+    # ── Input row ──
+    with CHAT.lock:
+        inp = CHAT.input
+        typing = CHAT.typing
+    if typing or focused:
+        safe_addstr(win, input_row, 1, "▸", curses.color_pair(C_AMBER) | curses.A_BOLD)
+        display_input = inp[-w+5:] if len(inp) > w - 5 else inp
+        safe_addstr(win, input_row, 3, display_input, curses.color_pair(C_DIM))
+        if focused:
+            cx = min(3 + len(display_input), w - 2)
+            try: win.move(input_row, cx)
+            except curses.error: pass
+    else:
+        safe_addstr(win, input_row, 1, "▸", curses.color_pair(C_DIM))
+        safe_addstr(win, input_row, 3, "ask heimdallr...", curses.color_pair(C_DIM) | curses.A_DIM)
+
     draw_stat_strip(win)
-    draw_panel_border(win, NAV.focus == "left")
+    draw_panel_border(win, focused)
     win.noutrefresh()
 
 def draw_overview_right(win):
@@ -740,6 +970,98 @@ def draw_logs_full(left_win, right_win):
     left_win.noutrefresh()
     right_win.noutrefresh()
 
+# ── Settings page ────────────────────────────────────────────────────────────
+_SETTINGS = [
+    ("refresh_interval",  str(REFRESH_INTERVAL), "seconds between data refreshes"),
+    ("sway_interval",     str(SWAY_INTERVAL),    "seconds per animation frame"),
+    ("willow_db_url",     "env:WILLOW_DB_URL",   "Postgres connection string"),
+    ("safe_root",         "env:WILLOW_SAFE_ROOT", "SAFE manifests root path"),
+    ("ollama_host",       "localhost:11434",      "Ollama API endpoint"),
+]
+
+def draw_settings_left(win):
+    win.erase()
+    content_y = draw_willow_hero(win)
+    safe_addstr(win, content_y,     2, "Settings", curses.color_pair(C_HEADER) | curses.A_BOLD)
+    safe_addstr(win, content_y + 1, 2, "↑↓=navigate  Enter=edit", curses.color_pair(C_DIM) | curses.A_DIM)
+    draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
+    win.noutrefresh()
+
+def draw_settings_right(win):
+    h, w = win.getmaxyx()
+    win.erase()
+    safe_addstr(win, 0, 1, "Configuration", curses.color_pair(C_HEADER) | curses.A_BOLD)
+    focused = NAV.focus == "right"
+    for i, (key, val, desc) in enumerate(_SETTINGS):
+        y = 2 + i * 3
+        if y + 2 >= h: break
+        selected = focused and i == NAV.card_idx
+        k_attr = curses.color_pair(C_SELECT) | curses.A_REVERSE if selected else curses.color_pair(C_AMBER)
+        safe_addstr(win, y,     2, f" {key} ", k_attr)
+        safe_addstr(win, y + 1, 4, val[:w-6],  curses.color_pair(C_BLUE))
+        safe_addstr(win, y + 2, 4, desc[:w-6], curses.color_pair(C_DIM) | curses.A_DIM)
+    draw_panel_border(win, focused)
+    win.noutrefresh()
+
+# ── Help page ─────────────────────────────────────────────────────────────────
+_HELP = [
+    ("Navigation",  [
+        ("Tab",         "Cycle focus: none → left → right → none"),
+        ("← →",        "Switch pages (when no panel focused)"),
+        ("← →",        "Move between card columns (right panel)"),
+        ("↑ ↓",        "Scroll log (left panel)"),
+        ("↑ ↓",        "Navigate rows (right panel)"),
+        ("1 - 9",      "Jump directly to page"),
+        ("Enter",      "Expand selected item"),
+        ("Esc",        "Collapse / unfocus panel"),
+    ]),
+    ("System",  [
+        ("r",          "Force data refresh"),
+        ("/",          "Search (Knowledge page)"),
+        ("q",          "Quit"),
+    ]),
+    ("Pages",  [
+        ("1",          "Overview — system card grid"),
+        ("2",          "Kart — task queue"),
+        ("3",          "Yggdrasil — local SLM models"),
+        ("4",          "Knowledge — KB search"),
+        ("5",          "Secrets — credential vault"),
+        ("6",          "Agents — SAFE manifests"),
+        ("7",          "Logs — full activity log"),
+        ("8",          "Settings — configuration"),
+        ("9",          "Help — this page"),
+    ]),
+]
+
+def draw_help_left(win):
+    win.erase()
+    content_y = draw_willow_hero(win)
+    safe_addstr(win, content_y,     2, "Help", curses.color_pair(C_HEADER) | curses.A_BOLD)
+    safe_addstr(win, content_y + 1, 2, "Willow Terminal Dashboard", curses.color_pair(C_DIM))
+    safe_addstr(win, content_y + 2, 2, "b17: DASH2  ΔΣ=42", curses.color_pair(C_DIM) | curses.A_DIM)
+    draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
+    win.noutrefresh()
+
+def draw_help_right(win):
+    h, w = win.getmaxyx()
+    win.erase()
+    safe_addstr(win, 0, 1, "Keyboard Reference", curses.color_pair(C_HEADER) | curses.A_BOLD)
+    y = 1
+    for section, entries in _HELP:
+        if y >= h - 1: break
+        safe_addstr(win, y, 1, f"── {section} ──", curses.color_pair(C_AMBER) | curses.A_BOLD)
+        y += 1
+        for key, desc in entries:
+            if y >= h - 1: break
+            safe_addstr(win, y, 3, f"{key:<12}", curses.color_pair(C_BLUE) | curses.A_BOLD)
+            safe_addstr(win, y, 16, desc[:w-17], curses.color_pair(C_DIM))
+            y += 1
+        y += 1
+    draw_panel_border(win, NAV.focus == "right")
+    win.noutrefresh()
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 PAGE_DRAWS = {
     PAGE_OVERVIEW:  (draw_overview_left,   draw_overview_right),
@@ -748,13 +1070,15 @@ PAGE_DRAWS = {
     PAGE_KNOWLEDGE: (draw_knowledge_left,  draw_knowledge_right),
     PAGE_SECRETS:   (draw_secrets_left,    draw_secrets_right),
     PAGE_AGENTS:    (draw_agents_left,     draw_agents_right),
+    PAGE_SETTINGS:  (draw_settings_left,   draw_settings_right),
+    PAGE_HELP:      (draw_help_left,       draw_help_right),
 }
 
 def main(stdscr):
     curses.curs_set(0)
     stdscr.keypad(True)
     stdscr.nodelay(True)
-    stdscr.timeout(200)
+    stdscr.timeout(50)
 
     if curses.has_colors():
         curses.start_color()
@@ -790,6 +1114,24 @@ def main(stdscr):
         while True:
             key = stdscr.getch()
 
+            # ── Chat input mode (overview left panel) ──
+            if NAV.focus == "left" and NAV.page == PAGE_OVERVIEW and not NAV.searching:
+                if key == 27:                        # Esc — unfocus
+                    NAV.focus = None
+                    with CHAT.lock: CHAT.input = ""
+                elif key in (curses.KEY_ENTER, 10, 13):
+                    with CHAT.lock:
+                        msg = CHAT.input.strip()
+                        CHAT.input = ""
+                    if msg and not CHAT.waiting:
+                        threading.Thread(target=send_chat, args=(msg,), daemon=True).start()
+                elif key in (curses.KEY_BACKSPACE, 127):
+                    with CHAT.lock: CHAT.input = CHAT.input[:-1]
+                elif key == 9:                       # Tab — move focus
+                    NAV.tab()
+                elif 32 <= key <= 126:
+                    with CHAT.lock: CHAT.input += chr(key)
+
             # ── Search mode ──
             if NAV.searching:
                 if key == 27:                        # Esc
@@ -820,7 +1162,7 @@ def main(stdscr):
                     stdscr.clear(); rebuild()
 
                 # ── Direct page jump (always works) ──
-                elif ord('1') <= key <= ord('7'):
+                elif ord('1') <= key <= ord('9'):
                     NAV.page = key - ord('1')
                     NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
 
@@ -862,6 +1204,11 @@ def main(stdscr):
                 except curses.error: pass
                 stdscr.noutrefresh(); curses.doupdate()
                 continue
+
+            # cursor visible only when typing in chat
+            chat_active = NAV.focus == "left" and NAV.page == PAGE_OVERVIEW
+            try: curses.curs_set(2 if chat_active else 0)
+            except curses.error: pass
 
             stdscr.erase()
             draw_page_bar(stdscr)
