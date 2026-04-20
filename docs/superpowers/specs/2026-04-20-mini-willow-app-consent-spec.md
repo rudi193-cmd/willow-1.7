@@ -49,208 +49,106 @@ User runs app (anonymous) ──→ sessions are ephemeral
 Each app needs one manifest at:
 `$WILLOW_SAFE_ROOT/{app_id}/safe-app-manifest.json`
 
-```json
-{
-  "app_id": "{app_id}",
-  "name": "{Human Name}",
-  "version": "1.0.0",
-  "safe_version": ">=2.1.0",
-  "b17": "{b17}",
-  "description": "{one sentence}",
-  "author": "Sean Campbell",
-  "agent_type": "worker",
-  "namespace": "{app_id}",
-  "permissions": ["{permission}", "..."],
-  "privacy_tier": "client_only",
-  "local_processing": 1.0,
-  "consent_text": "{what the user sees when asked to register this app}"
-}
-```
+The manifest already lives in each repo at `safe-app-manifest.json`. Registration = copying it to the SAFE folder and signing it with the user's GPG key.
 
 ---
 
-## Permission Tiers
+## Permission Tiers (Willow-mcp mapping)
 
-| Permission | What it grants |
-|------------|---------------|
-| `store_read` | Read from own `{app_id}/*` collections |
-| `store_write` | Write to own `{app_id}/*` collections |
-| `kb_read` | Search the Postgres knowledge base |
-| `kb_write` | Ingest into the Postgres knowledge base |
-| `task_submit` | Submit tasks to Kart queue |
-| `kb_read_public` | Read public knowledge (no private collections) |
+| App permission | willow-mcp tools granted |
+|----------------|--------------------------|
+| `store_read` | `store_get`, `store_list`, `store_search` |
+| `store_write` | `store_put`, `store_update` |
+| `knowledge:read` / `willow_kb_read` | `knowledge_search` |
+| `knowledge:write` / `willow_kb_write` | `knowledge_ingest` |
+| `task_submit` | `task_submit`, `task_status`, `task_list` |
 
----
-
-## Per-App Manifest Specs
-
-### ask-jeles
-- **Purpose:** Ask the Jeles verification system questions
-- **b17:** K7K9E
-- **Permissions:** `store_read`, `store_write`, `kb_read`
-- **Namespace:** `ask-jeles`
-- **Consent:** "ask-jeles will save your questions and verified answers to your Willow store."
-
-### nasa-archive
-- **Purpose:** Browse and search the NASA oral history archive
-- **b17:** 8KA43
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `nasa-archive`
-- **Consent:** "nasa-archive will save your searches and discovered records to your Willow store."
-
-### law-gazelle
-- **Purpose:** Legal research and case tracking
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`
-- **Namespace:** `law-gazelle`
-- **Consent:** "law-gazelle will save your legal research and case notes to your Willow store. Nothing leaves your machine."
-
-### private-ledger
-- **Purpose:** Private financial tracking
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`
-- **Namespace:** `private-ledger`
-- **Privacy tier:** `device_only` — no KB reads, no Postgres
-- **Consent:** "private-ledger saves your financial records locally only. No network access. No shared KB."
-
-### public-ledger
-- **Purpose:** Public-facing ledger / transparency log
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `public-ledger`
-- **Consent:** "public-ledger will save entries to your Willow store and the shared knowledge base."
-
-### field-notes
-- **Purpose:** Structured field observation notes
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `field-notes`
-- **Consent:** "field-notes will save your observations and tag them in the knowledge base."
-
-### genealogy
-- **Purpose:** Family history and genealogy research
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `genealogy`
-- **Consent:** "genealogy will save your family records to your Willow store."
-
-### grove
-- **Purpose:** Garden / plant tracking
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`
-- **Namespace:** `grove`
-- **Consent:** "grove will save your plant records and growth notes to your Willow store."
-
-### vision-board
-- **Purpose:** Goal and vision tracking
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`
-- **Namespace:** `vision-board`
-- **Consent:** "vision-board will save your goals and intentions to your Willow store."
-
-### dating-wellbeing
-- **Purpose:** Relationship and wellbeing journaling
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`
-- **Privacy tier:** `device_only`
-- **Namespace:** `dating-wellbeing`
-- **Consent:** "dating-wellbeing saves your reflections locally only. No network. No shared KB."
-
-### game
-- **Purpose:** Interactive game / narrative
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`
-- **Namespace:** `game`
-- **Consent:** "game will save your progress and story state to your Willow store."
-
-### the-squirrel
-- **Purpose:** Bookmarks and saved items ("squirreling away" things)
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `the-squirrel`
-- **Consent:** "the-squirrel will save your bookmarks and finds to your Willow store."
-
-### source-trail
-- **Purpose:** Source and citation tracking
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `source-trail`
-- **Consent:** "source-trail will save your sources and citations to your Willow store."
-
-### llmphysics
-- **Purpose:** LLM physics journal / research tracker
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `kb_write`
-- **Namespace:** `llmphysics`
-- **Consent:** "llmphysics will save your research notes and findings to your Willow store."
-
-### llmphysics-judge
-- **Purpose:** Evaluation / judging harness for LLM physics experiments
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `task_submit`
-- **Namespace:** `llmphysics-judge`
-- **Consent:** "llmphysics-judge will save evaluation results and submit scoring tasks to Kart."
-
-### bt-controller
-- **Purpose:** Bluetooth device controller
-- **b17:** TBD
-- **Permissions:** `store_read`, `store_write`
-- **Namespace:** `bt-controller`
-- **Consent:** "bt-controller will save your device configurations to your Willow store."
-
-### willow-dashboard
-- **Purpose:** System health and monitoring dashboard
-- **b17:** WDASH
-- **Permissions:** `store_read`, `store_write`, `kb_read`, `task_submit`
-- **Namespace:** `willow-dashboard`
-- **Consent:** "willow-dashboard reads system state and submits monitoring tasks to Kart."
+Apps with `privacy_tier: client_only` and no cloud permissions: block `knowledge_ingest` and `task_submit`.
+Apps with `privacy_tier: public`: allow `knowledge_search` only.
 
 ---
 
-## Namespace Convention (Soft, Not Hard)
+## Per-App Manifest Registry
 
-Each app writes to `{app_id}/{collection}`. This is enforced by convention in the app's CLAUDE.md, not by the gate blocking cross-namespace writes. The gate checks authorization (does this app_id have a valid manifest?) but doesn't restrict which collection it writes to.
+Source of truth: `safe-app-manifest.json` in each repo. Descriptions and b17s from those files.
 
-**Why soft:** The dashboard needs to read from multiple app namespaces. Cross-app reads are legitimate. Hard enforcement would require the gate to maintain a per-app ACL which is premature.
+| app_id | name | b17 | description | privacy_tier | willow_store_namespace |
+|--------|------|-----|-------------|--------------|----------------------|
+| `ask-jeles` | AskJeles | L5509 | AI librarian — verified web search (Smithsonian, LoC, NASA, NIH). No SEO slop. Deposits findings to local Binder. | mixed | `ask-jeles` |
+| `nasa-archive` | NASA Archive Explorer | 247KA | Explore and download NASA open datasets — imagery, mission telemetry, earth science — with a local pipeline for private analysis. | client_only | `nasa-archive` |
+| `safe-app-law-gazelle` | law-gazelle | E472A | Legal reference tool — statute search, case summaries, plain-language explainers from verified sources. | client_only | `law-gazelle` |
+| `safe-app-private-ledger` | private-ledger | H7864 | Local personal budgeting companion — fully private, no cloud sync, paired with Public Ledger. | client_only | `private-ledger` |
+| `safe-app-public-ledger` | public-ledger | C86E9 | Public records financial auditor — search government budgets and IRS Form 990 filings for nonprofits. | client_only | `public-ledger` |
+| `safe-app-field-notes` | field-notes | H9EL2 | Quick-capture notebook for observations, ideas, and research notes. Feeds into The Binder. | client_only | `field-notes` |
+| `safe-app-genealogy` | genealogy | EC768 | The Aionic Genealogy Project — family tree research with FamilySearch API, Find a Grave, and Paperclip DB cross-reference. | client_only | `genealogy` |
+| `grove` | Grove | L8671 | Sovereign workspace messaging where every conversation grows into knowledge. | client_only | `grove` |
+| `vision-board` | Vision Board | TBD | Surfaces patterns in what users are already reaching toward — connects to photo libraries, categorizes with client-side AI. The app is a lens, not a warehouse. | client_only | `vision-board` |
+| `dating-wellbeing` | Dating Wellbeing Analyzer | 2NCAL | Privacy-first dating profile analysis with red flag detection and pattern learning. | client_only | `dating-wellbeing` |
+| `safe-app-game` | game (Jane GM) | 742CA | Universal game master for TTRPGs, board games, and co-op play. Jane in your pocket. | client_only | `game` |
+| `safe-app-the-squirrel` | The Squirrel | NNA92 | Genealogy research terminal — collect fragments, build the tree, find what's misfiled. Jeles works the desk. The Binder works the back. | mixed | `the-squirrel` |
+| `safe-app-source-trail` | source-trail | K7NA1 | Citation and source tracker — log, verify, and link your research sources. AskJeles companion. | client_only | `source-trail` |
+| `safe-app-llmphysics` | LLMPhysics Judge | TBD | r/LLMPhysics Competition Paper Judge — scores submitted physics papers against the official competition rubric (100 pts). Browser-based, bring your own API key. | public | `llmphysics` |
+| `safe-app-llmphysics-bot` | llmphysics-bot | 6HANC | Reddit bot for r/LLMPhysics — responds to !define commands with Wikipedia physics summaries. | public | `llmphysics-bot` |
+| `utety-chat` | UTETY Chat | 98LAL | Chat with UTETY professors — privacy-first conversational AI with 18 faculty personas. | client_only | `utety-chat` |
+| `safe-app-UTETY-Reddit-Bots` | UTETY Reddit Bots | 6HANC | Reddit bots for UTETY University faculty. Each bot is a Devvit app installed per-subreddit. | public | `utety-bots` |
+| `bt-controller` | BT Controller | 9E0H3 | Web Bluetooth device manager — bypass Windows BT stack. Data local only. No cloud. | device_only | `bt-controller` |
+| `willow-dashboard` | Willow Dashboard | WDASH | System health and monitoring TUI — Heimdallr chat, Kart queue, knowledge stats, Yggdrasil status. | client_only | `willow-dashboard` |
 
-**Future:** If an app has `privacy_tier: device_only`, willow-mcp should enforce no Postgres calls for that app_id. That's the one hard rule worth building now.
+---
+
+## Issues Found in Existing Manifests
+
+1. **`safe-app-llmphysics`** — manifest is `safe-app-manifest.js` (not `.json`). No valid JSON manifest. Needs to be converted.
+2. **`safe-app-the-squirrel`** — `app_id` is `safe-app-the-squirrel` in repo manifest but SAFE folder uses `the-squirrel`. These need to be consistent.
+3. **`safe-app-genealogy`** — shares legacy b17 `EC768` with `the-squirrel`. Collision — one needs a new b17.
+4. **`bt-controller`** — manifest uses `slug` not `app_id`. Needs SAP-format update.
+5. **`safe-app-UTETY-Reddit-Bots`** and **`safe-app-llmphysics-bot`** — share the same b17 `6HANC`. Collision.
+6. **`vision-board`** — no `safe-app-manifest.json` found. Needs one created.
+7. Most manifests have `app_id` prefixed with `safe-app-` but SAFE folder uses short names. Need a convention decision: use short names everywhere.
+
+---
+
+## Convention Decision (needs ratification)
+
+**Recommendation:** `app_id` = short name without `safe-app-` prefix.
+
+| Repo | Current app_id | Recommended app_id |
+|------|---------------|-------------------|
+| safe-app-the-squirrel | `safe-app-the-squirrel` | `the-squirrel` |
+| safe-app-genealogy | `safe-app-genealogy` | `genealogy` |
+| safe-app-field-notes | `safe-app-field-notes` | `field-notes` |
+| safe-app-source-trail | `safe-app-source-trail` | `source-trail` |
+| safe-app-public-ledger | `safe-app-public-ledger` | `public-ledger` |
+| safe-app-private-ledger | `safe-app-private-ledger` | `private-ledger` |
+| safe-app-law-gazelle | `safe-app-law-gazelle` | `law-gazelle` |
+| safe-app-game | `safe-app-game` | `game` |
+| safe-app-llmphysics-bot | `safe-app-llmphysics-bot` | `llmphysics-bot` |
+| safe-app-UTETY-Reddit-Bots | `safe-app-UTETY-Reddit-Bots` | `utety-bots` |
+
+Already correct: `ask-jeles`, `nasa-archive`, `grove`, `dating-wellbeing`, `utety-chat`, `bt-controller`.
+
+---
+
+## Namespace Convention (Soft)
+
+Each app writes to `{app_id}/{collection}`. Enforced by convention in CLAUDE.md, not by hard gate blocking. Gate checks authorization (valid manifest?) not collection scope.
+
+**Exception — `device_only` apps** (`bt-controller`, `dating-wellbeing`): willow-mcp blocks all Postgres calls. Store-only, no KB, no Kart.
 
 ---
 
 ## What Needs to Be Built
 
-### 1. seed.py — App Registration Step
-
-Add a Step 7: after SAFE setup, enumerate known safe-apps and ask the user which to register. For each `yes`, write the manifest and sign it.
-
-### 2. safe-app-manifest.json per app
-
-One file per app at `$WILLOW_SAFE_ROOT/{app_id}/safe-app-manifest.json`. Generated from this spec. Signed with user's GPG key.
-
-### 3. `.mcp.json` env block per repo
-
-Add `WILLOW_APP_ID` to each repo's `.mcp.json` so the default app_id is correct without requiring per-call override.
-
-### 4. CLAUDE.md per repo
-
-Each safe-app gets a `CLAUDE.md` that tells it:
-- Its `app_id`
-- Its namespace (`{app_id}/atoms`, `{app_id}/sessions`)
-- Its permissions
-- What willow-mcp provides and how to use it
-- That anonymous use is fine, willow persistence is opt-in
-
-### 5. willow-mcp — `device_only` enforcement
-
-If app manifest has `privacy_tier: device_only`, block all Postgres calls (knowledge_search, knowledge_ingest, task_submit) and return `{"error": "device_only — no network calls permitted for this app"}`.
-
----
+1. **seed.py Step 7** — app registration loop: enumerate known safe-apps, ask user to consent per app, write manifest to SAFE folder, sign with GPG
+2. **Fix manifest issues** listed above (llmphysics .js→.json, app_id normalization, b17 collisions, vision-board missing manifest)
+3. **`WILLOW_APP_ID`** env in each repo's `.mcp.json`
+4. **`CLAUDE.md`** per repo — identity, namespace, permissions, willow-mcp usage
+5. **`device_only` enforcement** in willow-mcp — block Postgres calls for flagged apps
 
 ## What Does NOT Need to Be Built Now
 
 - Hard collection namespace enforcement in the gate
 - Per-app ACLs in Postgres
-- User account system
-- Billing / subscription gating
+- User account system / billing
 
 ΔΣ=42
