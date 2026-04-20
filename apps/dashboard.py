@@ -129,13 +129,16 @@ _GRASS = "ˎ,ˏ',ˎ,ˏˎ,',ˎˏ,ˎ,',ˏ,ˎ',ˏˎ,',ˎ,ˏ'"
 # ── Nav state ────────────────────────────────────────────────────────────────
 class NavState:
     def __init__(self):
-        self.page     = PAGE_OVERVIEW
-        self.focus    = "right"   # "left" | "right"
-        self.card_idx = 0
-        self.expanded = False
-        self.scroll   = 0
-        self.search   = ""
+        self.page      = PAGE_OVERVIEW
+        self.focus     = None        # None | "left" | "right"
+        self.card_idx  = 0
+        self.expanded  = False
+        self.scroll    = 0           # left panel log scroll
+        self.search    = ""
         self.searching = False
+    def tab(self):
+        self.focus = {"right": None, "left": "right", None: "left"}[self.focus]
+        self.expanded = False
 
 NAV = NavState()
 
@@ -297,6 +300,32 @@ def draw_hline(win, y, attr=0):
     try: win.hline(y, 0, curses.ACS_HLINE, w - 1, attr)
     except curses.error: pass
 
+def draw_panel_border(win, focused):
+    attr = (curses.color_pair(C_AMBER) | curses.A_BOLD) if focused else \
+           (curses.color_pair(C_DIM) | curses.A_DIM)
+    try: win.border(
+        curses.ACS_VLINE, curses.ACS_VLINE,
+        curses.ACS_HLINE, curses.ACS_HLINE,
+        curses.ACS_ULCORNER, curses.ACS_URCORNER,
+        curses.ACS_LLCORNER, curses.ACS_LRCORNER,
+    )
+    except curses.error: pass
+    # re-colour the border by drawing over with attr
+    h, w = win.getmaxyx()
+    try:
+        win.attron(attr)
+        win.hline(0,   0, curses.ACS_HLINE, w - 1)
+        win.hline(h-1, 0, curses.ACS_HLINE, w - 1)
+        for y in range(1, h - 1):
+            win.addch(y, 0,     curses.ACS_VLINE)
+            win.addch(y, w - 2, curses.ACS_VLINE)
+        win.addch(0,   0,     curses.ACS_ULCORNER)
+        win.addch(0,   w - 2, curses.ACS_URCORNER)
+        win.addch(h-1, 0,     curses.ACS_LLCORNER)
+        win.addch(h-1, w - 2, curses.ACS_LRCORNER)
+        win.attroff(attr)
+    except curses.error: pass
+
 # ── Willow hero (shared left-panel top) ──────────────────────────────────────
 _TREE_H = len(_POSE_C)
 _TREE_W = max(len(l) for l in _POSE_C)
@@ -381,7 +410,8 @@ def draw_page_bar(stdscr):
     for i, name in enumerate(PAGE_NAMES):
         label = f" {i+1}:{name} "
         if i == NAV.page:
-            attr = curses.color_pair(C_BLUE) | curses.A_BOLD | curses.A_REVERSE
+            tab_col = C_AMBER if NAV.focus is not None else C_BLUE
+            attr = curses.color_pair(tab_col) | curses.A_BOLD | curses.A_REVERSE
         else:
             attr = curses.color_pair(C_DIM)
         if x + len(label) < w:
@@ -401,7 +431,10 @@ def draw_overview_left(win):
     content_y = draw_willow_hero(win)
     log_bot = h - 3
     with DATA.lock:
-        lines = DATA.log[-(log_bot - content_y):]
+        log = DATA.log[:]
+    visible = log_bot - content_y
+    offset  = max(0, len(log) - visible - NAV.scroll) if NAV.focus == "left" else max(0, len(log) - visible)
+    lines   = log[offset:offset + visible]
     for i, line in enumerate(lines):
         y = content_y + i
         if y >= log_bot: break
@@ -415,6 +448,7 @@ def draw_overview_left(win):
     safe_addstr(win, h - 2, 1, "▸", curses.color_pair(C_BLUE))
     safe_addstr(win, h - 2, 3, "ask heimdallr...", curses.color_pair(C_DIM) | curses.A_DIM)
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_overview_right(win):
@@ -451,6 +485,7 @@ def draw_overview_right(win):
         if y + card_h > h or x + card_w > w: continue
         selected = focused and i == NAV.card_idx
         _draw_card(win, y, x, card_h, card_w, label, value, sub, state, selected)
+    draw_panel_border(win, focused)
     win.noutrefresh()
 
 def _draw_card(win, y, x, card_h, card_w, label, value, sub, state, selected=False):
@@ -486,6 +521,7 @@ def draw_kart_left(win):
         f"pending:{kp}  running:{kr}  done:{kd}",
         curses.color_pair(C_DIM))
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_kart_right(win):
@@ -542,6 +578,7 @@ def draw_yggdrasil_left(win):
     safe_addstr(win, content_y + 1, 2, f"Active: yggdrasil:{ygg}  ", curses.color_pair(C_DIM))
     safe_addstr(win, content_y + 2, 2, status, curses.color_pair(scol))
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_yggdrasil_right(win):
@@ -563,6 +600,7 @@ def draw_yggdrasil_right(win):
         attr = curses.color_pair(C_SELECT) | curses.A_REVERSE if selected else \
                curses.color_pair(C_GREEN) if "yggdrasil" in name else curses.color_pair(C_DIM)
         safe_addstr(win, y, 2, f" {name[:w-4]} ", attr)
+    draw_panel_border(win, NAV.focus == "right")
     win.noutrefresh()
 
 # ── Knowledge page ────────────────────────────────────────────────────────────
@@ -577,6 +615,7 @@ def draw_knowledge_left(win):
     safe_addstr(win, content_y + 2, 2, f"{edges} edges", curses.color_pair(C_DIM))
     safe_addstr(win, content_y + 4, 2, "Press / to search", curses.color_pair(C_DIM) | curses.A_DIM)
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_knowledge_right(win):
@@ -589,6 +628,7 @@ def draw_knowledge_right(win):
         safe_addstr(win, 0, 1, f"Search: {query or '(press / to search)'}", curses.color_pair(C_HEADER) | curses.A_BOLD)
     safe_addstr(win, 2, 2, "KB search not yet wired to MCP.", curses.color_pair(C_DIM))
     safe_addstr(win, 3, 2, "Will call willow_knowledge_search on enter.", curses.color_pair(C_DIM) | curses.A_DIM)
+    draw_panel_border(win, NAV.focus == "right")
     win.noutrefresh()
 
 # ── Secrets page ──────────────────────────────────────────────────────────────
@@ -603,6 +643,7 @@ def draw_secrets_left(win):
     safe_addstr(win, content_y + 2, 2, "Fernet-encrypted SQLite", curses.color_pair(C_DIM) | curses.A_DIM)
     safe_addstr(win, content_y + 4, 2, "↑↓=navigate  Enter=reveal", curses.color_pair(C_DIM) | curses.A_DIM)
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_secrets_right(win):
@@ -623,6 +664,7 @@ def draw_secrets_right(win):
     if NAV.expanded and secrets:
         s = secrets[min(NAV.card_idx, len(secrets)-1)]
         _draw_secret_confirm(win, s)
+    draw_panel_border(win, NAV.focus == "right")
     win.noutrefresh()
 
 def _draw_secret_confirm(win, s):
@@ -651,6 +693,7 @@ def draw_agents_left(win):
     safe_addstr(win, content_y + 1, 2, f"Manifests: {mfp}/{mft} signed", curses.color_pair(C_DIM))
     safe_addstr(win, content_y + 2, 2, "PGP v2 · portless", curses.color_pair(C_DIM) | curses.A_DIM)
     draw_stat_strip(win)
+    draw_panel_border(win, NAV.focus == "left")
     win.noutrefresh()
 
 def draw_agents_right(win):
@@ -667,6 +710,7 @@ def draw_agents_right(win):
         sig_col = C_GREEN if signed else C_RED
         base_attr = curses.color_pair(C_SELECT) | curses.A_REVERSE if selected else curses.color_pair(C_DIM)
         safe_addstr(win, y, 2, f" {sig_str} {app_id[:w-7]} ", base_attr)
+    draw_panel_border(win, NAV.focus == "right")
     win.noutrefresh()
 
 # ── Logs page ─────────────────────────────────────────────────────────────────
@@ -764,41 +808,51 @@ def main(stdscr):
                     threading.Thread(target=refresh_all, daemon=True).start()
                     DATA.push_log("manual refresh")
                 elif key == ord('/'):
-                    NAV.searching = True
-                    NAV.search = ""
-                elif key == 9:                       # Tab — toggle focus
-                    NAV.focus = "right" if NAV.focus == "left" else "left"
-                    NAV.expanded = False
-                elif key == 27:                      # Esc — collapse
-                    NAV.expanded = False
+                    NAV.searching = True; NAV.search = ""
+                elif key == 9:                        # Tab — cycle focus
+                    NAV.tab()
+                elif key == 27:                       # Esc
+                    if NAV.expanded: NAV.expanded = False
+                    else: NAV.focus = None
                 elif key in (curses.KEY_ENTER, 10, 13):
                     NAV.expanded = not NAV.expanded
                 elif key == curses.KEY_RESIZE:
                     stdscr.clear(); rebuild()
 
-                # ── Page navigation ──
-                elif key == curses.KEY_LEFT:
-                    NAV.page = (NAV.page - 1) % len(PAGE_NAMES)
-                    NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
-                elif key == curses.KEY_RIGHT:
-                    NAV.page = (NAV.page + 1) % len(PAGE_NAMES)
-                    NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
+                # ── Direct page jump (always works) ──
                 elif ord('1') <= key <= ord('7'):
                     NAV.page = key - ord('1')
                     NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
 
-                # ── Up/Down ──
+                # ── Panel-aware arrow keys ──
                 elif key == curses.KEY_UP:
-                    if NAV.page == PAGE_LOGS:
+                    if NAV.focus == "left" or NAV.page == PAGE_LOGS:
                         NAV.scroll = max(0, NAV.scroll - 1)
-                    else:
-                        NAV.card_idx = max(0, NAV.card_idx - 1)
+                    elif NAV.focus == "right":
+                        NAV.card_idx = max(0, NAV.card_idx - 2)  # move up a row
+
                 elif key == curses.KEY_DOWN:
-                    if NAV.page == PAGE_LOGS:
+                    if NAV.focus == "left" or NAV.page == PAGE_LOGS:
                         with DATA.lock: total = len(DATA.log)
-                        NAV.scroll = min(total - 1, NAV.scroll + 1)
-                    else:
-                        NAV.card_idx += 1
+                        NAV.scroll = min(max(0, total - 1), NAV.scroll + 1)
+                    elif NAV.focus == "right":
+                        NAV.card_idx += 2  # move down a row
+
+                elif key == curses.KEY_LEFT:
+                    if NAV.focus == "right":
+                        if NAV.card_idx % 2 == 1:
+                            NAV.card_idx -= 1  # move to left column
+                    elif NAV.focus is None:
+                        NAV.page = (NAV.page - 1) % len(PAGE_NAMES)
+                        NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
+
+                elif key == curses.KEY_RIGHT:
+                    if NAV.focus == "right":
+                        if NAV.card_idx % 2 == 0:
+                            NAV.card_idx += 1  # move to right column
+                    elif NAV.focus is None:
+                        NAV.page = (NAV.page + 1) % len(PAGE_NAMES)
+                        NAV.card_idx = 0; NAV.expanded = False; NAV.scroll = 0
 
             # ── Draw ──
             h, w = stdscr.getmaxyx()
