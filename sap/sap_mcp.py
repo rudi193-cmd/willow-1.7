@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import sqlite3 as _sqlite3
+from datetime import datetime
 from pathlib import Path
 
 # ── Path setup ────────────────────────────────────────────────────────────────
@@ -719,6 +720,15 @@ async def list_tools() -> list[types.Tool]:
 
 # ── Tool dispatch ─────────────────────────────────────────────────────────────
 
+def _qualifies_as_flag(record: dict, deviation: float) -> bool:
+    return (
+        record.get("type") in ("failure-log",) or
+        record.get("domain") == "governance" or
+        deviation > 0.6 or
+        (record.get("type") == "gap" and record.get("severity") in ("high", "critical"))
+    )
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
@@ -731,15 +741,33 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             }))]
 
         if name == "store_put":
+            col = arguments["collection"]
+            rec = arguments["record"]
+            dev = arguments.get("deviation", 0.0)
             rid, action, proposals = store.put(
-                arguments["collection"],
-                arguments["record"],
+                col,
+                rec,
                 record_id=arguments.get("record_id"),
-                deviation=arguments.get("deviation", 0.0),
+                deviation=dev,
             )
             result = {"id": rid, "action": action}
             if proposals:
                 result["proposals"] = [p.to_dict() for p in proposals]
+            # Auto-flag qualifying records into {namespace}/flags
+            namespace = col.split("/")[0]
+            if not col.endswith("/flags") and _qualifies_as_flag(rec, dev):
+                store.put(f"{namespace}/flags", {
+                    "atom_id": rid,
+                    "collection": col,
+                    "flag_state": "open",
+                    "title": rec.get("title", rec.get("b17", rid)),
+                    "severity": rec.get("severity", "medium"),
+                    "b17": rec.get("b17", ""),
+                    "created": datetime.now().isoformat(),
+                    "acknowledged": None,
+                    "resolved": None,
+                    "resolution": None,
+                })
 
         elif name == "store_get":
             result = store.get(arguments["collection"], arguments["record_id"])
@@ -1518,6 +1546,9 @@ def _hot_reload(target: str = "all") -> dict:
 
     if target in ("all", "store"):
         try:
+            import willow_store as _ws_mod
+            importlib.reload(_ws_mod)
+            WillowStore = _ws_mod.WillowStore
             store = WillowStore(STORE_ROOT)
             reloaded.append("store: reinitialized")
         except Exception as e:

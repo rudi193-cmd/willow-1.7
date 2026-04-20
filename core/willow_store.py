@@ -529,11 +529,14 @@ class WillowStore:
     # ── Search ─────────────────────────────────────────────────────────
 
     def search(self, collection: str, query: str) -> list[dict]:
-        """Text search within a collection (SQL LIKE)."""
+        """Text search within a collection (SQL LIKE, all tokens must match)."""
         conn = self._conn(collection)
+        tokens = query.split()
+        conditions = " AND ".join(["data LIKE ?"] * len(tokens))
+        params = tuple(f"%{t}%" for t in tokens)
         rows = conn.execute(
-            "SELECT id, data, deviation, action FROM records WHERE deleted = 0 AND data LIKE ?",
-            (f"%{query}%",)
+            f"SELECT id, data, deviation, action FROM records WHERE deleted = 0 AND {conditions}",
+            params
         ).fetchall()
         results = []
         for row in rows:
