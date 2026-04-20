@@ -72,6 +72,11 @@ The porch comes down when this ships.
 - `tools/sandbox_memory_test.py` — memory auditor (REDUNDANT/STALE/DARK/CONTRADICTION) (`8721caa`)
 - Phase 4 structural: content-addressed IDs — `content_store` table + SHA-256 in `nest_intake`, `content_id` column in `raw_jsonls` (`cd88610`)
 - Phase 4 structural: kart sandbox — `_spawn()` wraps task execution in bubblewrap (--unshare-net/pid, ro-bind, tmpfs), stdin for scripts, host fallback with WARNING (`cd88610`)
+- Fault register — `hanuman/flags` collection, auto-flag on `store_put` (failure-log/governance/deviation>0.6/high-gap), startup skill step 4.5 surfaces open flags at boot (`cd49a19`)
+- `store_search` multi-keyword AND tokenization — was single LIKE on full string, now splits and ANDs all tokens (`cd49a19`)
+- `willow_reload` fix — now does `importlib.reload(willow_store)` before reinit, code changes to `willow_store.py` take effect without process restart (`cd49a19`)
+- Kart sandbox fixes — git identity injected from host config, `~/.ssh`+`.netrc` bound on `allow_net`, `~/agents/` bound, willow-venv/bin in PATH, TWINE_/PYPI_ env passthrough (`d97b1bb`, `8a65e20`)
+- Fleet wiring — 21 public repos (safe-app-*, willow-dashboard, willow-seed) wired to `willow-mcp` via `.mcp.json`; 5 legacy repos pointed to `willow-1.7/sap_mcp.py`; `willow-mcp` v1.1.0 schema-aligned with WillowStore and published to PyPI
 
 ---
 
