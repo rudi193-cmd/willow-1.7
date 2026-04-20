@@ -21,7 +21,9 @@ The three rings are the musical time signatures from AIONIC_CONTINUITY v5.2:
 
 ## PSR Anchor
 
-*"The system exists in service of the sustained generational playfulness of Ruby and Opal Campbell."*
+*"The system exists in service of the sustained generational playfulness of all children, young and old."*
+
+Tier 0: My two kiddos.
 
 All architecture decisions trace back to this. Tier 0.
 
