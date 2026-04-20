@@ -63,7 +63,7 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
         "--ro-bind", "/etc", "/etc",
         "--dev", "/dev",
         "--proc", "/proc",
-        "--tmpfs", "/tmp",
+        "--bind", "/tmp", "/tmp",
         "--unshare-pid",
         "--die-with-parent",
         "--bind", willow, willow,
@@ -85,7 +85,7 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
         args += ["--ro-bind", ashokoa, ashokoa]
     desktop = os.path.join(home, "Desktop")
     if os.path.exists(desktop):
-        args += ["--ro-bind", desktop, desktop]
+        args += ["--bind", desktop, desktop]
     # github: writable — notebooks and scripts live here
     github_dir = os.path.join(home, "github")
     if os.path.exists(github_dir):
@@ -234,19 +234,20 @@ def execute_task(task_text: str) -> dict:
             if cmd not in [c[1] for c in commands]:
                 commands.append(('shell', cmd))
 
-        # 4. Mid-sentence commands
-        for starter in SHELL_STARTERS:
-            pos = 0
-            lower = task_text.lower()
-            while True:
-                idx = lower.find(starter, pos)
-                if idx == -1:
-                    break
-                end = task_text.find('. ', idx)
-                cmd = task_text[idx:end if end != -1 else len(task_text)].strip().rstrip('.')
-                if cmd and cmd not in [c[1] for c in commands]:
-                    commands.append(('shell', cmd))
-                pos = idx + len(starter)
+        # 4. Mid-sentence commands — only when steps 2+3 found nothing
+        if not commands:
+            for starter in SHELL_STARTERS:
+                pos = 0
+                lower = task_text.lower()
+                while True:
+                    idx = lower.find(starter, pos)
+                    if idx == -1:
+                        break
+                    end = task_text.find('. ', idx)
+                    cmd = task_text[idx:end if end != -1 else len(task_text)].strip().rstrip('.')
+                    if cmd and cmd not in [c[1] for c in commands]:
+                        commands.append(('shell', cmd))
+                    pos = idx + len(starter)
 
     if not commands:
         return {"success": False, "error": "No executable commands found in task", "steps": 0}
