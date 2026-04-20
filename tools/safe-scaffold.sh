@@ -24,7 +24,7 @@
 set -euo pipefail
 
 WILLOW_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
+SAFE_ROOT="${WILLOW_SAFE_ROOT:-/media/willow/SAFE/Applications}"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 
