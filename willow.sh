@@ -26,7 +26,7 @@ export WILLOW_PYTHON
 
 # ── Environment (override via env or .env file) ───────────────────────────────
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
-export WILLOW_CREDENTIALS="${WILLOW_CREDENTIALS:-${WILLOW_ROOT}/credentials.json}"
+export WILLOW_VAULT="${WILLOW_VAULT:-${HOME}/.willow_creds.db}"
 export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
 export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 
@@ -63,7 +63,7 @@ case "$cmd" in
     status)
         echo "Willow 1.7 — status check"
         echo "  Store root:  ${WILLOW_STORE_ROOT}"
-        echo "  Credentials: ${WILLOW_CREDENTIALS}"
+        echo "  Vault:       ${WILLOW_VAULT}"
         python3 -c "
 import sys; sys.path.insert(0, '${WILLOW_ROOT}/core')
 from pg_bridge import try_connect

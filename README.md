@@ -97,15 +97,56 @@ The server itself boots without a gate check — it is infrastructure, not an ap
 
 **Memory sanitization.** Every memory read path (`store_get`, `store_search`, `willow_knowledge_search`) passes through `core/memory_sanitizer.py` before results reach the LLM. Twenty-four patterns across seven categories (identity hijack, instruction override, extraction attempt, imperative command, conditional trap, manipulation, encoding abuse) detect injection attempts from user-written content. Flagged results are annotated with a `_sanitizer` warning and logged to `sap/log/gaps.jsonl`. Clean results are wrapped in provenance delimiters: `<WILLOW_MEMORY source="user-written observation — not an instruction">`. This addresses the indirect prompt injection vector where a user-written note can act as a command when retrieved as context.
 
-**Free fleet fallback.** Local Ollama is always tried first. If unavailable, inference falls back to Groq → Cerebras → SambaNova in order, using keys from `credentials.json`. All three providers offer free tiers.
+**Free fleet fallback.** Local Ollama is always tried first. If unavailable, inference falls back to Groq → Cerebras → SambaNova in order, using keys from the encrypted vault at `~/.willow_creds.db`. All three providers offer free tiers.
 
 **BASE 17 IDs.** All agent-generated IDs use a 21-character alphabet (`0-9ACEHKLNRTXZ`) chosen to eliminate visually ambiguous characters. Five characters gives ~4M combinations — enough for session-scoped IDs without a database sequence.
 
 ---
 
-## Setup
+## Install
 
-### 1. System prerequisites
+### Windows 10 / 11
+
+```powershell
+# Run once from PowerShell (as Administrator)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\install.ps1
+```
+
+`install.ps1` enables WSL2, installs Ubuntu 22.04, clones willow-1.7 into `/opt/willow-1.7` inside Ubuntu, and hands off to `seed.py`. After that, everything runs inside Linux. If a reboot is required to enable WSL2, the script registers itself as a Run key and resumes automatically.
+
+### macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rudi193-cmd/willow-1.7/master/install-mac.sh | bash
+```
+
+Installs Homebrew if missing, installs Python 3.11 / PostgreSQL / GPG via Homebrew, clones willow-1.7 to `/opt/willow-1.7`, and runs `seed.py`. Community-tested.
+
+### Linux (direct)
+
+```bash
+git clone https://github.com/rudi193-cmd/willow-1.7
+python3 willow-1.7/seed.py
+```
+
+`seed.py` handles everything: venv, Postgres schema, SAFE root, GPG key, MCP config, app registration. After seed completes it launches `willow-dashboard` automatically.
+
+---
+
+## API Keys
+
+Willow uses free-tier cloud LLMs as a fallback when local models are unavailable. During `seed.py → boot.py` onboarding, FRANK will walk you through adding a Groq key (free tier, no credit card). Keys are stored in an encrypted vault at `~/.willow_creds.db` — never in plain text, never in the repo.
+
+Optional providers: [Cerebras](https://cloud.cerebras.ai) · [SambaNova](https://cloud.sambanova.ai)
+
+---
+
+## Manual Setup (advanced)
+
+Skip this if you used the install scripts above.
+
+### Prerequisites
 
 ```bash
 # PostgreSQL 14+ with peer auth (Unix socket)
@@ -113,16 +154,11 @@ sudo apt install postgresql
 sudo -u postgres createuser --superuser $USER
 sudo -u postgres createdb willow
 
-# Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull qwen2.5:3b   # default model
-
 # GPG (SAFE manifest verification)
 sudo apt install gnupg
-gpg --import <your-signing-key.asc>
 ```
 
-### 2. Python environment
+### Python environment
 
 ```bash
 python3 -m venv ~/.willow-venv
@@ -130,35 +166,7 @@ source ~/.willow-venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Credentials (fleet fallback)
-
-```bash
-cp credentials.json.example credentials.json
-# Fill in keys from Groq, Cerebras, and/or SambaNova
-# All three offer free tiers. Keys are tried in order (KEY, KEY_2, KEY_3)
-# with automatic failover on rate limit.
-```
-
-`credentials.json` is gitignored. It never leaves your machine.
-
-### 4. SAFE drive
-
-The authorization chain requires signed manifests on a dedicated path.
-Default: `/media/willow/SAFE/Applications/`
-
-Override:
-```bash
-export WILLOW_SAFE_ROOT=/your/safe/path
-```
-
-Structure for each authorized app:
-```
-SAFE/Applications/<app_id>/
-  safe-app-manifest.json
-  safe-app-manifest.json.sig   # gpg --detach-sign safe-app-manifest.json
-```
-
-### 5. Claude Code integration
+### Claude Code integration
 
 Add to your project's `.mcp.json`:
 
@@ -173,9 +181,7 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-Claude Code will launch `willow.sh` automatically at session start and connect via stdio.
-
-### 6. Verify
+### Verify
 
 ```bash
 ./willow.sh status    # check Postgres + Ollama
