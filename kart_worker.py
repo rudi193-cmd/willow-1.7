@@ -57,13 +57,17 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
     """Build bwrap argument list for sandboxed task execution."""
     home = os.path.expanduser("~")
     willow = str(WILLOW_ROOT)
+    # Use ~/.willow/tmp as /tmp inside the sandbox so that writes are visible
+    # to the host process regardless of systemd PrivateTmp namespace isolation.
+    sandbox_tmp = os.path.join(home, ".willow", "tmp")
+    os.makedirs(sandbox_tmp, exist_ok=True)
     args = [
         "bwrap",
         "--ro-bind", "/usr", "/usr",
         "--ro-bind", "/etc", "/etc",
         "--dev", "/dev",
         "--proc", "/proc",
-        "--bind", "/tmp", "/tmp",
+        "--bind", sandbox_tmp, "/tmp",
         "--unshare-pid",
         "--die-with-parent",
         "--bind", willow, willow,
@@ -88,8 +92,6 @@ def _bwrap_prefix(allow_net: bool = False) -> list[str]:
         if os.path.exists(path):
             args += ["--ro-bind", path, path]
     # agents/: hanuman/bin scripts live here — bind so Kart can run them
-    # Note: /tmp bind exists but may not be reliable if systemd PrivateTmp isolates
-    # the parent session's /tmp. Use agents/hanuman/bin/ or fenced code blocks instead.
     agents_dir = os.path.join(home, "agents")
     if os.path.exists(agents_dir):
         args += ["--bind", agents_dir, agents_dir]
