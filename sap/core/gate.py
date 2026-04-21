@@ -40,6 +40,62 @@ _EXPECTED_FP = os.environ.get(
 
 _APP_ID_RE = _re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_\-]*$')
 
+# Maps semantic permission strings (as declared in safe-app-manifest.json)
+# to the set of tool names they grant. Fail-closed: any tool not covered → deny.
+PERMISSION_GROUPS: dict[str, frozenset] = {
+    "store_read": frozenset({
+        "store_get", "store_search", "store_list", "store_search_all",
+        "store_edges_for", "store_stats", "store_audit",
+    }),
+    "store_write": frozenset({
+        "store_put", "store_update", "store_delete", "store_add_edge",
+    }),
+    "conversation_storage": frozenset({
+        "store_put", "store_get", "store_search", "store_list", "store_update",
+    }),
+    "export_data": frozenset({
+        "store_list", "store_search_all",
+    }),
+    "postgres_read": frozenset({
+        "willow_knowledge_search", "willow_query", "willow_agents",
+        "willow_status", "willow_system_status", "willow_governance",
+        "willow_memory_check", "willow_handoff_latest", "willow_handoff_search",
+    }),
+    "knowledge_write": frozenset({
+        "willow_knowledge_ingest", "willow_journal",
+    }),
+    "safe_manifest_read": frozenset({
+        "willow_status", "willow_system_status",
+    }),
+    "local_llm": frozenset({
+        "willow_chat", "willow_persona", "willow_route", "willow_speak",
+    }),
+    "cloud_llm_free": frozenset({
+        "willow_chat",
+    }),
+    "task_submit": frozenset({
+        "willow_task_submit", "willow_task_status", "willow_task_list",
+    }),
+    "opus_read": frozenset({
+        "opus_search", "opus_feedback",
+    }),
+    "opus_write": frozenset({
+        "opus_ingest", "opus_feedback_write", "opus_journal",
+    }),
+    "jeles_fetch": frozenset({
+        "jeles_fetch", "jeles_sources",
+    }),
+    "nest": frozenset({
+        "willow_nest_scan", "willow_nest_queue", "willow_nest_file",
+    }),
+    "pipeline": frozenset({
+        "willow_agent_create", "willow_jeles_register", "willow_jeles_extract",
+        "willow_binder_file", "willow_binder_edge", "willow_ratify",
+        "willow_base17", "willow_handoff_rebuild", "willow_reload",
+        "willow_restart_server",
+    }),
+}
+
 # If set, only these app_ids are accepted (comma-separated). INFRA IDs are always exempt.
 _ALLOWED_IDS_RAW = os.environ.get("WILLOW_ALLOWED_APP_IDS", "")
 _ALLOWED_APP_IDS: frozenset[str] = (
@@ -123,6 +179,22 @@ def _log_dev_grant(app_id: str, path: Path) -> None:
         "pgp": "skipped",
     }
     log_path = LOG_DIR / "grants.jsonl"
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _log_tool_denied(app_id: str, tool_name: str, perms: list) -> None:
+    """Record a capability denial — identity passed but tool not in permissions."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "app_id": app_id,
+        "event": "tool_not_permitted",
+        "tool": tool_name,
+        "declared_permissions": perms,
+    }
+    logger.warning("SAP gate tool denied: app_id=%s tool=%s perms=%s", app_id, tool_name, perms)
+    log_path = LOG_DIR / "gaps.jsonl"
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -276,6 +348,55 @@ def get_manifest(app_id: str) -> Optional[dict]:
     except Exception as e:
         logger.error("Manifest parse error for %s: %s", app_id, e)
         return None
+
+
+def permitted(app_id: str, tool_name: str) -> bool:
+    """
+    Check if an authorized app may call a specific tool.
+
+    Reads permissions[] from the manifest and expands via PERMISSION_GROUPS.
+    Unknown permission strings are treated as literal tool names.
+    Fail-closed: empty or missing permissions → deny all tool calls.
+    Does NOT re-run PGP — call after authorized() has already passed.
+    """
+    try:
+        app_id = _validate_app_id(app_id)
+    except ValueError:
+        return False
+
+    app_path = (
+        _resolve_app_path(SAFE_ROOT, app_id)
+        or _resolve_app_path(PROFESSOR_ROOT, app_id)
+        or _resolve_dev_app_path(app_id)
+    )
+    if app_path is None:
+        return False
+
+    try:
+        raw = (app_path / "safe-app-manifest.json").read_text(encoding="utf-8")
+        manifest = json.loads(raw)
+    except Exception as e:
+        logger.error("permitted(): manifest unreadable for %s: %s", app_id, e)
+        return False
+
+    perms: list = manifest.get("permissions", [])
+    if not perms:
+        _log_tool_denied(app_id, tool_name, perms)
+        return False
+
+    allowed: set = set()
+    for perm in perms:
+        group = PERMISSION_GROUPS.get(perm)
+        if group is not None:
+            allowed.update(group)
+        else:
+            allowed.add(perm)
+
+    if tool_name not in allowed:
+        _log_tool_denied(app_id, tool_name, perms)
+        return False
+
+    return True
 
 
 def list_authorized() -> list[str]:

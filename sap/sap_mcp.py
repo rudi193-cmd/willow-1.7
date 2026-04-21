@@ -60,10 +60,11 @@ except ImportError:
 
 # ── SAP gate (ready for per-tool auth) ────────────────────────────────────────
 try:
-    from sap.core.gate import authorized as sap_authorized, list_authorized as sap_list_authorized
+    from sap.core.gate import authorized as sap_authorized, list_authorized as sap_list_authorized, permitted as sap_permitted
     _SAP_GATE = True
 except Exception as _e:
     _SAP_GATE = False
+    sap_permitted = None  # type: ignore[assignment]
     print(f"SAP gate unavailable: {_e}", file=sys.stderr)
     # Log to gaps.jsonl so the audit trail reflects gate-down state
     import json as _json
@@ -733,12 +734,19 @@ def _qualifies_as_flag(record: dict, deviation: float) -> bool:
 async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     try:
         app_id = arguments.get("app_id", "")
-        if _SAP_GATE and app_id not in _INFRA_IDS and not sap_authorized(app_id):
-            return [types.TextContent(type="text", text=json.dumps({
-                "error": "unauthorized",
-                "app_id": app_id,
-                "tool": name,
-            }))]
+        if _SAP_GATE and app_id not in _INFRA_IDS:
+            if not sap_authorized(app_id):
+                return [types.TextContent(type="text", text=json.dumps({
+                    "error": "unauthorized",
+                    "app_id": app_id,
+                    "tool": name,
+                }))]
+            if not sap_permitted(app_id, name):
+                return [types.TextContent(type="text", text=json.dumps({
+                    "error": "not_permitted",
+                    "app_id": app_id,
+                    "tool": name,
+                }))]
 
         if name == "store_put":
             col = arguments["collection"]
