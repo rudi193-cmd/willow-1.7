@@ -123,8 +123,42 @@ print('  Postgres:   ', 'connected' if pg else 'not connected')
         exec "${WILLOW_PYTHON}" "${WILLOW_ROOT}/kart_worker.py" --daemon
         ;;
 
+    dashboard)
+        # ── Launch willow-dashboard after seed install ────────────────────────
+        # Looks for willow-dashboard as a sibling repo, then common locations.
+        # All Willow env vars are already exported above — the dashboard
+        # inherits WILLOW_STORE_ROOT, WILLOW_SAFE_ROOT, WILLOW_PG_DB, etc.
+        DASH_CANDIDATES=(
+            "${WILLOW_ROOT}/../willow-dashboard"
+            "${HOME}/github/willow-dashboard"
+            "${HOME}/willow-dashboard"
+        )
+        DASH_DIR=""
+        for candidate in "${DASH_CANDIDATES[@]}"; do
+            if [[ -f "${candidate}/willow-dashboard.sh" ]]; then
+                DASH_DIR="$(cd "${candidate}" && pwd)"
+                break
+            fi
+        done
+
+        if [[ -z "${DASH_DIR}" ]]; then
+            echo "willow-dashboard not found."
+            echo ""
+            echo "  Install it alongside this repo:"
+            echo "    git clone https://github.com/rudi193-cmd/willow-dashboard \\"
+            echo "              $(dirname "${WILLOW_ROOT}")/willow-dashboard"
+            echo ""
+            echo "  Then run:  ./willow.sh dashboard"
+            exit 1
+        fi
+
+        # Pass remaining args through (--dev, --agent=X, --setup, etc.)
+        shift
+        exec "${DASH_DIR}/willow-dashboard.sh" "$@"
+        ;;
+
     *)
-        echo "Usage: willow.sh [start|status|verify|kart]"
+        echo "Usage: willow.sh [start|status|verify|kart|dashboard]"
         exit 1
         ;;
 esac
