@@ -29,6 +29,7 @@ class U2UListener:
     async def serve(self):
         self._server = await asyncio.start_server(
             self._handle, self.host, self.port,
+            limit=_MAX_PACKET_BYTES,
         )
         log.info("U2U listening on %s:%s", self.host, self.port)
         async with self._server:
@@ -70,8 +71,8 @@ class U2UListener:
             })
             return
 
-        contact = self._consent._store.get(sender_addr)
-        if contact and not Packet.validate(packet, contact.public_key_hex):
+        contact = self._consent.get_contact(sender_addr)
+        if not contact or not Packet.validate(packet, contact.public_key_hex):
             log.warning("invalid sig from %s — dropped", sender_addr)
             return
 

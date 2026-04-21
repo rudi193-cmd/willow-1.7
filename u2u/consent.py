@@ -25,6 +25,10 @@ class ConsentGate:
     def __init__(self, store: ContactStore):
         self._store = store
 
+    def get_contact(self, addr: str):
+        """Return the Contact for addr, or None if not found."""
+        return self._store.get(addr)
+
     def check(self, sender_addr: str, ptype: PacketType) -> ConsentResult:
         contact = self._store.get(sender_addr)
 
