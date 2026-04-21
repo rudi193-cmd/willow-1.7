@@ -1419,26 +1419,78 @@ def _fetch_trusted(source_name: str, query: str = "", timeout: int = 10) -> tupl
     return text[:8000], url
 
 
-def _jeles_curate(raw_content: str, question: str, source_desc: str) -> str:
-    """Pass content through Jeles for curation. Uses free fleet via llm_router."""
+def _load_fleet_key() -> tuple[str, str] | tuple[None, None]:
+    """Load best available API key from ~/.willow/secrets/credentials.json.
+    Returns (provider, key) — prefers Anthropic, falls back to Groq."""
+    creds_path = Path.home() / ".willow" / "secrets" / "credentials.json"
     try:
-        import llm_router
-        llm_router.load_keys_from_json()
-        prompt = (
-            f"SOURCE: {source_desc}\n"
-            f"QUESTION: {question}\n\n"
-            f"CONTENT:\n{raw_content[:6000]}"
-        )
-        response = llm_router.ask(
-            _JELES_WEB_SYSTEM + "\n\n" + prompt,
-            preferred_tier="free",
-            task_type="analysis",
-        )
-        if response and response.content:
-            return response.content.strip()
+        creds = json.loads(creds_path.read_text())
+        for k in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
+            if creds.get(k):
+                return ("groq", creds[k])
+        if creds.get("ANTHROPIC_API_KEY"):
+            return ("anthropic", creds["ANTHROPIC_API_KEY"])
+    except Exception:
+        pass
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return ("anthropic", os.environ["ANTHROPIC_API_KEY"])
+    if os.environ.get("GROQ_API_KEY"):
+        return ("groq", os.environ["GROQ_API_KEY"])
+    return (None, None)
+
+
+def _jeles_curate(raw_content: str, question: str, source_desc: str) -> str:
+    """Pass content through Jeles for curation. Calls Anthropic Haiku directly."""
+    import urllib.request as _urllib
+    provider, key = _load_fleet_key()
+    if not key:
+        return "FLAGS: No API key available.\nSUMMARY: Could not process.\nDESCRIPTOR: error"
+    try:
+        prompt = f"SOURCE: {source_desc}\nQUESTION: {question}\n\nCONTENT:\n{raw_content[:6000]}"
+        _UA = "Mozilla/5.0 (compatible; Willow/1.7; +https://github.com/rudi193-cmd/willow-1.7)"
+        if provider == "anthropic":
+            payload = json.dumps({
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1024,
+                "system": _JELES_WEB_SYSTEM,
+                "messages": [{"role": "user", "content": prompt}],
+            }).encode()
+            req = _urllib.Request(
+                "https://api.anthropic.com/v1/messages",
+                data=payload,
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                    "user-agent": _UA,
+                },
+            )
+            with _urllib.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            return data["content"][0]["text"].strip()
+        else:
+            payload = json.dumps({
+                "model": "llama-3.1-8b-instant",
+                "messages": [
+                    {"role": "system", "content": _JELES_WEB_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 1024,
+            }).encode()
+            req = _urllib.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": _UA,
+                },
+            )
+            with _urllib.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"FLAGS: Jeles curation failed: {e}\nSUMMARY: Could not process.\nDESCRIPTOR: error"
-    return "FLAGS: No response from fleet.\nSUMMARY: Empty.\nDESCRIPTOR: error"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

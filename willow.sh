@@ -28,6 +28,7 @@ export WILLOW_PYTHON
 export WILLOW_STORE_ROOT="${WILLOW_STORE_ROOT:-${WILLOW_ROOT}/store}"
 export WILLOW_VAULT="${WILLOW_VAULT:-${HOME}/.willow_creds.db}"
 export WILLOW_SAFE_ROOT="${WILLOW_SAFE_ROOT:-${HOME}/SAFE/Applications}"
+export WILLOW_DEV_SAFE_ROOT="${WILLOW_DEV_SAFE_ROOT:-${HOME}/github}"
 export WILLOW_PERSONAL_DIR="${WILLOW_PERSONAL_DIR:-${HOME}/personal}"
 
 # ── Agent identity — sets identity for the MCP server process ────────────────

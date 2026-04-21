@@ -29,6 +29,10 @@ SAFE_ROOT = Path(os.environ.get("WILLOW_SAFE_ROOT", "/media/willow/SAFE/Applicat
 PROFESSOR_ROOT = SAFE_ROOT / "utety-chat" / "professors"
 LOG_DIR = Path(__file__).parent.parent / "log"
 
+# Dev fallback: search $WILLOW_DEV_SAFE_ROOT/safe-app-<app_id>/ when SAFE_ROOT lacks the folder.
+# PGP is skipped for dev paths — logged as dev_access_granted, not access_granted.
+_DEV_SAFE_ROOT = Path(os.environ["WILLOW_DEV_SAFE_ROOT"]) if os.environ.get("WILLOW_DEV_SAFE_ROOT") else None
+
 _EXPECTED_FP = os.environ.get(
     "WILLOW_PGP_FINGERPRINT",
     "96B92D78875F60BE229A0A348F414B8C1B402BB0",
@@ -42,6 +46,17 @@ _ALLOWED_APP_IDS: frozenset[str] = (
     frozenset(x.strip() for x in _ALLOWED_IDS_RAW.split(",") if x.strip())
     if _ALLOWED_IDS_RAW.strip() else frozenset()
 )
+
+
+def _resolve_dev_app_path(app_id: str) -> Optional[Path]:
+    """Check $WILLOW_DEV_SAFE_ROOT for a manifest. Tries safe-app-<app_id>/ then <app_id>/."""
+    if _DEV_SAFE_ROOT is None:
+        return None
+    for dirname in (f"safe-app-{app_id}", app_id):
+        candidate = _DEV_SAFE_ROOT / dirname
+        if candidate.is_dir() and (candidate / "safe-app-manifest.json").exists():
+            return candidate
+    return None
 
 
 def _resolve_app_path(root: Path, app_id: str) -> Optional[Path]:
@@ -90,6 +105,22 @@ def _log_grant(app_id: str) -> None:
         "ts": datetime.now(timezone.utc).isoformat(),
         "app_id": app_id,
         "event": "access_granted",
+    }
+    log_path = LOG_DIR / "grants.jsonl"
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _log_dev_grant(app_id: str, path: Path) -> None:
+    """Record dev-mode access (no PGP). Logged separately so prod grants stay clean."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logger.warning("SAP gate DEV grant (no PGP): app_id=%s path=%s", app_id, path)
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "app_id": app_id,
+        "event": "dev_access_granted",
+        "path": str(path),
+        "pgp": "skipped",
     }
     log_path = LOG_DIR / "grants.jsonl"
     with open(log_path, "a", encoding="utf-8") as f:
@@ -171,28 +202,37 @@ def authorized(app_id: str) -> bool:
 
     # Check top-level Applications first, then UTETY/professors/ fallback
     app_path = _resolve_app_path(SAFE_ROOT, app_id) or _resolve_app_path(PROFESSOR_ROOT, app_id)
-    if app_path is None:
-        _log_gap(app_id, f"SAFE folder not found: {PROFESSOR_ROOT / app_id}")
-        return False
 
-    manifest_path = app_path / "safe-app-manifest.json"
-    if not manifest_path.exists():
-        _log_gap(app_id, f"No manifest at: {manifest_path}")
-        return False
+    if app_path is not None:
+        manifest_path = app_path / "safe-app-manifest.json"
+        if not manifest_path.exists():
+            _log_gap(app_id, f"No manifest at: {manifest_path}")
+            return False
+        try:
+            manifest_path.read_text(encoding="utf-8")
+        except Exception as e:
+            _log_gap(app_id, f"Manifest unreadable: {e}")
+            return False
+        sig_ok, sig_reason = _verify_pgp(manifest_path)
+        if not sig_ok:
+            _log_gap(app_id, f"PGP verification failed: {sig_reason}")
+            return False
+        _log_grant(app_id)
+        return True
 
-    try:
-        manifest_path.read_text(encoding="utf-8")
-    except Exception as e:
-        _log_gap(app_id, f"Manifest unreadable: {e}")
-        return False
+    # Dev fallback: $WILLOW_DEV_SAFE_ROOT/safe-app-<app_id>/ — no PGP required
+    dev_path = _resolve_dev_app_path(app_id)
+    if dev_path is not None:
+        try:
+            (dev_path / "safe-app-manifest.json").read_text(encoding="utf-8")
+        except Exception as e:
+            _log_gap(app_id, f"Dev manifest unreadable: {e}")
+            return False
+        _log_dev_grant(app_id, dev_path)
+        return True
 
-    sig_ok, sig_reason = _verify_pgp(manifest_path)
-    if not sig_ok:
-        _log_gap(app_id, f"PGP verification failed: {sig_reason}")
-        return False
-
-    _log_grant(app_id)
-    return True
+    _log_gap(app_id, f"SAFE folder not found: {PROFESSOR_ROOT / app_id}")
+    return False
 
 
 def require_authorized(app_id: str) -> None:
@@ -222,13 +262,16 @@ def get_manifest(app_id: str) -> Optional[dict]:
     if not authorized(app_id):
         return None
 
-    # Mirror the same path resolution as authorized()
-    manifest_path = SAFE_ROOT / app_id / "safe-app-manifest.json"
-    if not manifest_path.exists():
-        manifest_path = PROFESSOR_ROOT / app_id / "safe-app-manifest.json"
+    app_path = (
+        _resolve_app_path(SAFE_ROOT, app_id)
+        or _resolve_app_path(PROFESSOR_ROOT, app_id)
+        or _resolve_dev_app_path(app_id)
+    )
+    if app_path is None:
+        return None
 
     try:
-        raw = manifest_path.read_text(encoding="utf-8")
+        raw = (app_path / "safe-app-manifest.json").read_text(encoding="utf-8")
         return json.loads(raw)
     except Exception as e:
         logger.error("Manifest parse error for %s: %s", app_id, e)
