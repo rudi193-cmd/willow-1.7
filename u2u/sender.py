@@ -32,8 +32,8 @@ async def send_packet(
     """Sign and send a packet to to_addr. Returns True on success."""
     packet = Packet.build(ptype, from_addr, to_addr, payload, identity, ttl, thread_id)
     wire = Packet.serialize(packet)
-    host, port = _parse_endpoint(to_addr)
     try:
+        host, port = _parse_endpoint(to_addr)
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port),
             timeout=_CONNECT_TIMEOUT,
@@ -44,7 +44,7 @@ async def send_packet(
         await writer.wait_closed()
         log.info("sent %s → %s", ptype.value, to_addr)
         return True
-    except (OSError, asyncio.TimeoutError) as e:
+    except (OSError, asyncio.TimeoutError, ValueError) as e:
         log.warning("send failed to %s: %s", to_addr, e)
         return False
 

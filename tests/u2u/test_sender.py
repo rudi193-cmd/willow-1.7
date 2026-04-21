@@ -22,6 +22,18 @@ def test_parse_endpoint_username_with_at():
     assert port == 8550
 
 @pytest.mark.asyncio
+async def test_send_fails_on_bad_endpoint(tmp_path):
+    ident = Identity.generate(tmp_path / "id.json")
+    result = await send_packet(
+        PacketType.NOTE,
+        from_addr="sean@localhost:8550",
+        to_addr="jeles@host:notaport",
+        payload={"subject": "x", "body": "y"},
+        identity=ident,
+    )
+    assert result is False
+
+@pytest.mark.asyncio
 async def test_send_fails_on_no_listener(tmp_path):
     """Sending to a port with no listener returns False, doesn't raise."""
     ident = Identity.generate(tmp_path / "id.json")
