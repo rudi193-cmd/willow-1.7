@@ -1,6 +1,7 @@
 # willow-1.7/u2u/identity.py
 # b17: U2UI1
 import json
+import os
 from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
@@ -20,17 +21,18 @@ class Identity:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         priv_bytes = key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-        path.write_text(json.dumps({
-            "version": 1,
-            "private_key": priv_bytes.hex(),
-            "public_key": ident.public_key_hex,
-        }))
+        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(json.dumps({"version": 1, "private_key": priv_bytes.hex()}))
         return ident
 
     @classmethod
     def load(cls, path: Path) -> "Identity":
-        data = json.loads(Path(path).read_text())
-        return cls(Ed25519PrivateKey.from_private_bytes(bytes.fromhex(data["private_key"])))
+        try:
+            data = json.loads(Path(path).read_text())
+            return cls(Ed25519PrivateKey.from_private_bytes(bytes.fromhex(data["private_key"])))
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise ValueError(f"Cannot load identity from {path}: {e}") from e
 
     @classmethod
     def load_or_generate(cls, path: Path) -> "Identity":

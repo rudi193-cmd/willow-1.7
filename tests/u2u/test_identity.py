@@ -29,3 +29,33 @@ def test_verify_fails_wrong_key(tmp_path):
     b = Identity.generate(tmp_path / "b.json")
     sig = a.sign(b"hello")
     assert not b.verify(b"hello", sig, b.public_key_hex)
+
+def test_load_or_generate_creates_if_missing(tmp_path):
+    path = tmp_path / "new.json"
+    ident = Identity.load_or_generate(path)
+    assert path.exists()
+    assert len(ident.public_key_hex) == 64
+
+def test_load_or_generate_loads_if_exists(tmp_path):
+    path = tmp_path / "existing.json"
+    original = Identity.generate(path)
+    loaded = Identity.load_or_generate(path)
+    assert loaded.public_key_hex == original.public_key_hex
+
+def test_verify_rejects_other_key(tmp_path):
+    a = Identity.generate(tmp_path / "a.json")
+    b = Identity.generate(tmp_path / "b.json")
+    sig = a.sign(b"hello")
+    # sig from 'a', but verifying with 'b's key — must fail
+    assert not a.verify(b"hello", sig, b.public_key_hex)
+
+def test_verify_rejects_malformed_sig(tmp_path):
+    ident = Identity.generate(tmp_path / "id.json")
+    assert not ident.verify(b"hello", "notvalidhex!!", ident.public_key_hex)
+
+def test_file_permissions(tmp_path):
+    import stat
+    path = tmp_path / "id.json"
+    Identity.generate(path)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
