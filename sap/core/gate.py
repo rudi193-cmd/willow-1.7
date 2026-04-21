@@ -94,6 +94,15 @@ PERMISSION_GROUPS: dict[str, frozenset] = {
         "willow_base17", "willow_handoff_rebuild", "willow_reload",
         "willow_restart_server",
     }),
+    # Combined read: postgres_read + store_read + safe_manifest_read.
+    # Used by SAFE partition manifests (e.g. Willow-dashboard).
+    "willow_kb_read": frozenset({
+        "willow_knowledge_search", "willow_query", "willow_agents",
+        "willow_status", "willow_system_status", "willow_governance",
+        "willow_memory_check", "willow_handoff_latest", "willow_handoff_search",
+        "store_get", "store_search", "store_list", "store_search_all",
+        "store_edges_for", "store_stats", "store_audit",
+    }),
 }
 
 # If set, only these app_ids are accepted (comma-separated). INFRA IDs are always exempt.
