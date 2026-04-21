@@ -30,9 +30,12 @@ class ContactStore:
             self._load()
 
     def _load(self):
-        raw = json.loads(self._path.read_text())
-        for addr, data in raw.items():
-            self._contacts[addr] = Contact(**data)
+        try:
+            raw = json.loads(self._path.read_text())
+            for addr, data in raw.items():
+                self._contacts[addr] = Contact(**data)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValueError(f"Cannot load contacts from {self._path}: {e}") from e
 
     def save(self):
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,10 +56,13 @@ class ContactStore:
     def get(self, addr: str) -> Optional[Contact]:
         return self._contacts.get(addr)
 
-    def block(self, addr: str):
+    def block(self, addr: str) -> bool:
+        """Block a contact. Returns True if found and blocked, False if addr unknown."""
         if addr in self._contacts:
             self._contacts[addr].blocked = True
             self.save()
+            return True
+        return False
 
     def all(self) -> list[Contact]:
         return list(self._contacts.values())

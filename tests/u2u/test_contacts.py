@@ -31,3 +31,14 @@ def test_all_returns_list(tmp_path):
     store.add("a@host:8550", public_key_hex="aa", name="A")
     store.add("b@host:8550", public_key_hex="bb", name="B")
     assert len(store.all()) == 2
+
+def test_block_unknown_returns_false(tmp_path):
+    store = ContactStore(tmp_path / "contacts.json")
+    result = store.block("nobody@nowhere:8550")
+    assert result is False
+
+def test_load_malformed_json_raises(tmp_path):
+    path = tmp_path / "contacts.json"
+    path.write_text("not valid json{{{")
+    with pytest.raises(ValueError, match="Cannot load contacts"):
+        ContactStore(path)

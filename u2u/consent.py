@@ -38,7 +38,7 @@ class ConsentGate:
             return ConsentResult.ALLOW
 
         field = _TYPE_TO_FIELD.get(ptype)
-        if field and not getattr(contact, field, True):
+        if field and not getattr(contact, field, False):
             return ConsentResult.DENY
 
         return ConsentResult.ALLOW
