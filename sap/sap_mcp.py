@@ -164,114 +164,114 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="store_get",
-            description="Read a single record by ID from a collection.",
+            description="Read a single record by ID from a collection. Returns the record object or {error: not_found}.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "record_id": {"type": "string"},
+                    "collection": {"type": "string", "description": "Collection path, e.g. 'hanuman/atoms', 'knowledge/atoms', 'feedback'"},
+                    "record_id": {"type": "string", "description": "The record's unique ID (returned by store_put or store_search)"},
                 },
                 "required": ["collection", "record_id"],
             },
         ),
         types.Tool(
             name="store_search",
-            description="Text search within a collection.",
+            description="Full-text search within a single collection. Multi-keyword queries are ANDed. Prefer willow_knowledge_search for the Postgres KB.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "query": {"type": "string"},
+                    "collection": {"type": "string", "description": "Collection path to search within, e.g. 'hanuman/atoms'"},
+                    "query": {"type": "string", "description": "Search terms — multiple words are ANDed"},
                 },
                 "required": ["collection", "query"],
             },
         ),
         types.Tool(
             name="store_search_all",
-            description="Search across ALL collections. The 'go ask Willow' pattern.",
+            description="Search across ALL SOIL collections simultaneously. Use when you don't know which collection holds the answer.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
+                    "query": {"type": "string", "description": "Search terms to match across every collection"},
                 },
                 "required": ["query"],
             },
         ),
         types.Tool(
             name="store_list",
-            description="List all records in a collection.",
+            description="Return every record in a collection. Use store_search for large collections — store_list returns everything.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
+                    "collection": {"type": "string", "description": "Collection path to enumerate, e.g. 'hanuman/flags'"},
                 },
                 "required": ["collection"],
             },
         ),
         types.Tool(
             name="store_update",
-            description="Update an existing record. Audit-trailed.",
+            description="Update an existing record in-place. Every update is audit-trailed with the previous value.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "record_id": {"type": "string"},
-                    "record": {"type": "object"},
-                    "deviation": {"type": "number", "default": 0.0},
+                    "collection": {"type": "string", "description": "Collection path containing the record"},
+                    "record_id": {"type": "string", "description": "ID of the record to update"},
+                    "record": {"type": "object", "description": "New record data — replaces the existing record"},
+                    "deviation": {"type": "number", "default": 0.0, "description": "Angular deviation (radians). 0=routine, pi/4=significant, pi/2=major, pi=reversal."},
                 },
                 "required": ["collection", "record_id", "record"],
             },
         ),
         types.Tool(
             name="store_delete",
-            description="Soft-delete a record. Invisible to search/get but audit-trailed.",
+            description="Soft-delete a record — invisible to search/get but retained in the audit trail. Not a hard delete; record can be recovered via audit log.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "record_id": {"type": "string"},
+                    "collection": {"type": "string", "description": "Collection path containing the record"},
+                    "record_id": {"type": "string", "description": "ID of the record to soft-delete"},
                 },
                 "required": ["collection", "record_id"],
             },
         ),
         types.Tool(
             name="store_add_edge",
-            description="Add an edge to the knowledge graph.",
+            description="Add a directed edge between two records in the knowledge graph. Edges express relationships and are traversable via store_edges_for.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "from_id": {"type": "string"},
-                    "to_id": {"type": "string"},
-                    "relation": {"type": "string"},
-                    "context": {"type": "string", "default": ""},
+                    "from_id": {"type": "string", "description": "Source record ID"},
+                    "to_id": {"type": "string", "description": "Target record ID"},
+                    "relation": {"type": "string", "description": "Relationship label, e.g. 'references', 'depends_on', 'supersedes'"},
+                    "context": {"type": "string", "default": "", "description": "Optional free-text annotation for the edge"},
                 },
                 "required": ["from_id", "to_id", "relation"],
             },
         ),
         types.Tool(
             name="store_edges_for",
-            description="Get all edges involving a record.",
+            description="Return all graph edges where the given record is either source or target.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "record_id": {"type": "string"},
+                    "record_id": {"type": "string", "description": "Record ID to look up edges for"},
                 },
                 "required": ["record_id"],
             },
         ),
         types.Tool(
             name="store_stats",
-            description="Collection counts and trajectory scores.",
+            description="Return record counts and trajectory scores for every SOIL collection. No parameters required.",
             inputSchema={"type": "object", "properties": {}},
         ),
         types.Tool(
             name="store_audit",
-            description="Read recent audit log for a collection.",
+            description="Read the recent audit log for a collection — shows creates, updates, and soft-deletes with timestamps.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "collection": {"type": "string"},
-                    "limit": {"type": "integer", "default": 20},
+                    "collection": {"type": "string", "description": "Collection path to audit, e.g. 'hanuman/atoms'"},
+                    "limit": {"type": "integer", "default": 20, "description": "Maximum number of audit entries to return (default 20)"},
                 },
                 "required": ["collection"],
             },
@@ -279,28 +279,28 @@ async def list_tools() -> list[types.Tool]:
         # ── Postgres-backed Willow tools ──────────────────────────────────────
         types.Tool(
             name="willow_knowledge_search",
-            description="Search Willow's Postgres knowledge graph (atoms, entities, ganesha). Returns pointers, not content.",
+            description="Search Willow's Postgres knowledge graph (atoms, entities, ganesha). Returns pointers (title + path), not raw content. Use store_get to fetch the full record.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "limit": {"type": "integer", "default": 20},
+                    "query": {"type": "string", "description": "Search query — plain text, matched against title and summary"},
+                    "limit": {"type": "integer", "default": 20, "description": "Maximum results to return across atoms, entities, and ganesha (default 20)"},
                 },
                 "required": ["query"],
             },
         ),
         types.Tool(
             name="willow_knowledge_ingest",
-            description="Add an atom to the Willow knowledge graph.",
+            description="Add a knowledge atom to Willow's Postgres KB. Writes to the knowledge table. Call willow_memory_check first to avoid duplicates.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string"},
-                    "summary": {"type": "string"},
-                    "source_type": {"type": "string", "default": "mcp"},
-                    "source_id": {"type": "string"},
-                    "category": {"type": "string", "default": "general"},
-                    "domain": {"type": "string"},
+                    "title": {"type": "string", "description": "Short descriptive title for the atom"},
+                    "summary": {"type": "string", "description": "Content or summary — for file-backed atoms, store the file path here"},
+                    "source_type": {"type": "string", "default": "mcp", "description": "Origin type: 'mcp', 'file', 'session', 'manual'"},
+                    "source_id": {"type": "string", "description": "Identifier of the source (e.g. session ID, file path)"},
+                    "category": {"type": "string", "default": "general", "description": "Broad category: 'general', 'code', 'decision', 'reference'"},
+                    "domain": {"type": "string", "description": "Domain namespace, e.g. 'hanuman', 'opus', 'archived'"},
                 },
                 "required": ["title", "summary"],
             },
@@ -321,12 +321,12 @@ async def list_tools() -> list[types.Tool]:
         ),
         types.Tool(
             name="willow_query",
-            description="General search across knowledge graph. Alias for willow_knowledge_search.",
+            description="General search across the knowledge graph. Alias for willow_knowledge_search — use either interchangeably.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
-                    "limit": {"type": "integer", "default": 20},
+                    "query": {"type": "string", "description": "Search query — plain text, matched against title and summary"},
+                    "limit": {"type": "integer", "default": 20, "description": "Maximum results to return (default 20)"},
                 },
                 "required": ["query"],
             },
@@ -352,8 +352,8 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string", "default": "willow", "description": "Agent name: willow, kart, shiva, gerald, etc."},
-                    "message": {"type": "string"},
+                    "agent": {"type": "string", "default": "willow", "description": "Agent name: willow, kart, shiva, gerald, etc. Defaults to willow."},
+                    "message": {"type": "string", "description": "Message to send to the agent"},
                 },
                 "required": ["message"],
             },
@@ -381,30 +381,30 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string", "default": "willow"},
+                    "agent": {"type": "string", "default": "willow", "description": "Agent name to retrieve persona for (default: willow)"},
                 },
                 "required": ["agent"],
             },
         ),
         types.Tool(
             name="willow_speak",
-            description="Text-to-speech via Willow TTS router.",
+            description="Text-to-speech via Willow TTS router. Not available in portless mode — returns status message.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string"},
-                    "voice": {"type": "string", "default": "default"},
+                    "text": {"type": "string", "description": "Text to synthesize"},
+                    "voice": {"type": "string", "default": "default", "description": "Voice identifier (default: 'default')"},
                 },
                 "required": ["text"],
             },
         ),
         types.Tool(
             name="willow_route",
-            description="Route a message to the appropriate agent based on content.",
+            description="Route a message to the most appropriate Willow agent based on content analysis.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "message": {"type": "string"},
+                    "message": {"type": "string", "description": "Message content to route — the system selects the best agent"},
                 },
                 "required": ["message"],
             },
@@ -429,7 +429,7 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "task_id": {"type": "string"},
+                    "task_id": {"type": "string", "description": "Task ID returned by willow_task_submit"},
                 },
                 "required": ["task_id"],
             },
@@ -440,8 +440,8 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string", "default": "kart"},
-                    "limit": {"type": "integer", "default": 10},
+                    "agent": {"type": "string", "default": "kart", "description": "Agent queue to inspect (default: kart)"},
+                    "limit": {"type": "integer", "default": 10, "description": "Maximum number of tasks to return (default 10)"},
                 },
             },
         ),
@@ -452,57 +452,57 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "limit": {"type": "integer", "default": 20},
+                    "query": {"type": "string", "description": "Search query — matched against opus atom title and content"},
+                    "limit": {"type": "integer", "default": 20, "description": "Maximum results to return (default 20)"},
                 },
                 "required": ["query"],
             },
         ),
         types.Tool(
             name="opus_ingest",
-            description="Write an atom to opus.atoms.",
+            description="Write an atom to the opus.atoms Postgres table. Use for Opus-tier knowledge distinct from the main hanuman KB.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "content": {"type": "string"},
-                    "domain": {"type": "string", "default": "meta"},
-                    "depth": {"type": "integer", "default": 1},
-                    "session_id": {"type": "string"},
+                    "content": {"type": "string", "description": "Atom content or file path"},
+                    "domain": {"type": "string", "default": "meta", "description": "Domain namespace for the atom (default: 'meta')"},
+                    "depth": {"type": "integer", "default": 1, "description": "Depth level: 1=surface, 2=considered, 3=deep (default 1)"},
+                    "session_id": {"type": "string", "description": "Session ID to associate with this atom (optional)"},
                 },
                 "required": ["content"],
             },
         ),
         types.Tool(
             name="opus_feedback",
-            description="Read opus feedback entries. Omit domain for all.",
+            description="Read opus feedback entries. Omit domain to return all entries across all domains.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "domain": {"type": "string"},
+                    "domain": {"type": "string", "description": "Filter by domain (e.g. 'reasoning', 'style'). Omit for all domains."},
                 },
             },
         ),
         types.Tool(
             name="opus_feedback_write",
-            description="Write an opus feedback entry (domain, principle, source).",
+            description="Write a feedback principle to the opus feedback table. Used for recording learned behavioral rules.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "domain": {"type": "string"},
-                    "principle": {"type": "string"},
-                    "source": {"type": "string", "default": "self"},
+                    "domain": {"type": "string", "description": "Domain this principle applies to, e.g. 'reasoning', 'style', 'safety'"},
+                    "principle": {"type": "string", "description": "The feedback principle or rule to record"},
+                    "source": {"type": "string", "default": "self", "description": "Source of the feedback: 'self', 'user', or agent name (default: 'self')"},
                 },
                 "required": ["domain", "principle"],
             },
         ),
         types.Tool(
             name="opus_journal",
-            description="Write a journal entry to opus.journal.",
+            description="Write a journal entry to opus.journal. Separate from willow_journal — targets the Opus-tier journal table.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "entry": {"type": "string"},
-                    "session_id": {"type": "string"},
+                    "entry": {"type": "string", "description": "Journal entry text"},
+                    "session_id": {"type": "string", "description": "Session ID to tag this entry with (optional)"},
                 },
                 "required": ["entry"],
             },
@@ -530,9 +530,9 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Agent name (becomes schema name)"},
-                    "trust": {"type": "string", "default": "WORKER"},
-                    "role": {"type": "string", "default": ""},
+                    "name": {"type": "string", "description": "Agent name — becomes the Postgres schema name and folder name"},
+                    "trust": {"type": "string", "default": "WORKER", "description": "Trust tier: ENGINEER, OPERATOR, or WORKER (default: WORKER)"},
+                    "role": {"type": "string", "default": "", "description": "Short role description for the agent registry"},
                     "folder_root": {"type": "string", "description": "Filesystem path for agent folders"},
                 },
                 "required": ["name"],
@@ -544,12 +544,12 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "jsonl_path": {"type": "string"},
-                    "session_id": {"type": "string"},
-                    "cwd": {"type": "string"},
-                    "turn_count": {"type": "integer", "default": 0},
-                    "file_size": {"type": "integer", "default": 0},
+                    "agent": {"type": "string", "description": "Agent schema name (e.g. 'hanuman', 'heimdallr')"},
+                    "jsonl_path": {"type": "string", "description": "Absolute path to the raw JSONL session file"},
+                    "session_id": {"type": "string", "description": "Unique session identifier for this JSONL"},
+                    "cwd": {"type": "string", "description": "Working directory when the session was recorded (optional)"},
+                    "turn_count": {"type": "integer", "default": 0, "description": "Number of turns in the JSONL (optional, for indexing)"},
+                    "file_size": {"type": "integer", "default": 0, "description": "File size in bytes (optional, for indexing)"},
                 },
                 "required": ["agent", "jsonl_path", "session_id"],
             },
@@ -560,13 +560,13 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "jsonl_id": {"type": "string", "description": "BASE 17 ID from jeles_register"},
-                    "content": {"type": "string"},
-                    "title": {"type": "string"},
-                    "domain": {"type": "string", "default": "meta"},
-                    "depth": {"type": "integer", "default": 1},
-                    "certainty": {"type": "number", "default": 0.98},
+                    "agent": {"type": "string", "description": "Agent schema name the JSONL belongs to"},
+                    "jsonl_id": {"type": "string", "description": "BASE 17 ID returned by willow_jeles_register"},
+                    "content": {"type": "string", "description": "Extracted atom content or insight"},
+                    "title": {"type": "string", "description": "Short title for the atom (optional but recommended)"},
+                    "domain": {"type": "string", "default": "meta", "description": "Domain namespace for the atom (default: 'meta')"},
+                    "depth": {"type": "integer", "default": 1, "description": "Depth level 1-3 (default 1)"},
+                    "certainty": {"type": "number", "default": 0.98, "description": "Extraction certainty 0-1. Must exceed 0.95 to write. (default 0.98)"},
                 },
                 "required": ["agent", "jsonl_id", "content"],
             },
@@ -577,9 +577,9 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "jsonl_id": {"type": "string"},
-                    "dest_path": {"type": "string", "description": "Destination in agent's .tmp/"},
+                    "agent": {"type": "string", "description": "Agent schema name the JSONL belongs to"},
+                    "jsonl_id": {"type": "string", "description": "BASE 17 ID of the registered JSONL"},
+                    "dest_path": {"type": "string", "description": "Destination path inside the agent's .tmp/ folder"},
                 },
                 "required": ["agent", "jsonl_id", "dest_path"],
             },
@@ -590,10 +590,10 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "source_atom": {"type": "string"},
-                    "target_atom": {"type": "string"},
-                    "edge_type": {"type": "string"},
+                    "agent": {"type": "string", "description": "Agent schema name proposing the edge"},
+                    "source_atom": {"type": "string", "description": "Source atom ID"},
+                    "target_atom": {"type": "string", "description": "Target atom ID"},
+                    "edge_type": {"type": "string", "description": "Relationship type, e.g. 'references', 'extracted_from', 'supersedes'"},
                 },
                 "required": ["agent", "source_atom", "target_atom", "edge_type"],
             },
@@ -604,9 +604,9 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "jsonl_id": {"type": "string"},
-                    "approve": {"type": "boolean", "default": True},
+                    "agent": {"type": "string", "description": "Agent schema name the JSONL belongs to"},
+                    "jsonl_id": {"type": "string", "description": "BASE 17 ID of the JSONL to ratify"},
+                    "approve": {"type": "boolean", "default": True, "description": "True to approve (promotes .tmp/ to cache/), False to reject (clears .tmp/)"},
                     "cache_path": {"type": "string", "description": "Destination in agent's cache/ (required if approve=true)"},
                 },
                 "required": ["agent", "jsonl_id"],
@@ -618,7 +618,7 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "length": {"type": "integer", "default": 5},
+                    "length": {"type": "integer", "default": 5, "description": "Number of BASE 17 characters to generate (default 5)"},
                 },
             },
         ),
@@ -635,7 +635,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "query": {"type": "string", "description": "Keyword or phrase to search for"},
                     "file_type": {"type": "string", "description": "Optional filter: pigeon, session, daily_log, overnight, review"},
-                    "limit": {"type": "integer", "default": 10},
+                    "limit": {"type": "integer", "default": 10, "description": "Maximum handoffs to return (default 10)"},
                 },
                 "required": ["query"],
             },
